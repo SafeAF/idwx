@@ -1,0 +1,7 @@
+stations:
+  - station_id: twin_falls
+    name: Twin Falls
+    lat: 42.5629
+    lon: -114.4609
+    elevation_m: 1134
+    source: NOAA
