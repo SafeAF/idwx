@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -70,6 +71,10 @@ def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Conf
         )
 
     years = sorted(df["date"].dt.year.dropna().unique().tolist())
+    start_year = int(cfg.backtest.get("start_year", years[0])) if years else None
+    end_year = int(cfg.backtest.get("end_year", years[-1])) if years else None
+    if start_year is not None and end_year is not None:
+        years = [y for y in years if start_year <= y <= end_year]
     rows: list[dict] = []
 
     for y in years:
@@ -98,7 +103,7 @@ def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Conf
                     "value_date": sf.date,
                     "value_doy": sf.doy,
                     "value_float": np.nan,
-                    "quality_flags": "",
+                    "quality_flags": "" if sf.date is not None else "no_event_in_window",
                 }
             )
             rows.append(
@@ -110,7 +115,7 @@ def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Conf
                     "value_date": ff.date,
                     "value_doy": ff.doy,
                     "value_float": np.nan,
-                    "quality_flags": "",
+                    "quality_flags": "" if ff.date is not None else "no_event_in_window",
                 }
             )
 
@@ -126,7 +131,7 @@ def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Conf
                     "value_date": pd.NaT,
                     "value_doy": np.nan,
                     "value_float": ffd,
-                    "quality_flags": "",
+                    "quality_flags": "" if pd.notna(ffd) else "missing_dependency",
                 }
             )
 
@@ -275,6 +280,20 @@ def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Conf
             wsi = wsi + z["winter_precip_mm"] * float(weights.get("precip", 0.0))
 
         rows2 = []
+        for col in z.columns:
+            for (sid, sy), val in z[col].items():
+                rows2.append(
+                    {
+                        "station_id": sid,
+                        "season_year": int(sy),
+                        "threshold_c": np.nan,
+                        "target_name": f"{col}_z",
+                        "value_date": pd.NaT,
+                        "value_doy": np.nan,
+                        "value_float": float(val) if pd.notna(val) else np.nan,
+                        "quality_flags": "",
+                    }
+                )
         for (sid, sy), val in wsi.items():
             rows2.append(
                 {
@@ -292,3 +311,31 @@ def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Conf
             out = pd.concat([out, pd.DataFrame(rows2)], ignore_index=True)
 
     return out.sort_values(["station_id", "season_year", "target_name", "threshold_c"], na_position="last").reset_index(drop=True)
+
+
+def build_targets_cache(config: Config, rebuild: bool = False) -> list[str]:
+    daily_dir = config.cache_dir / "daily"
+    targets_dir = config.cache_dir / "targets"
+    if not daily_dir.exists():
+        raise FileNotFoundError(f"Daily cache dir does not exist: {daily_dir}")
+    targets_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[str] = []
+    all_frames: list[pd.DataFrame] = []
+    for p in sorted(daily_dir.glob("*.parquet")):
+        sid = p.stem
+        out_path = targets_dir / f"{sid}.parquet"
+        if out_path.exists() and not rebuild:
+            df_existing = pd.read_parquet(out_path)
+            all_frames.append(df_existing)
+            continue
+
+        daily = pd.read_parquet(p)
+        targets = build_targets_for_station(daily, station_id=sid, cfg=config)
+        targets.to_parquet(out_path, index=False)
+        written.append(sid)
+        all_frames.append(targets)
+
+    if all_frames:
+        pd.concat(all_frames, ignore_index=True).to_parquet(targets_dir / "_all_targets.parquet", index=False)
+    return written

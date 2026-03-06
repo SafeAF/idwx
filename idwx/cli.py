@@ -14,18 +14,21 @@ from idwx.eval import walk_forward_backtest, write_eval_reports
 from idwx.io import build_data_cache
 from idwx.models import create_model
 from idwx.registry import latest_model_dir, save_model_artifacts
+from idwx.targets import build_targets_cache
 
 app = typer.Typer(help="Idaho weather seasonal modeling CLI")
 data_app = typer.Typer(help="Data cache operations")
 dataset_app = typer.Typer(help="Dataset operations")
+target_app = typer.Typer(help="Target table operations")
 app.add_typer(data_app, name="data")
 app.add_typer(dataset_app, name="dataset")
+app.add_typer(target_app, name="target")
 
 
 @data_app.command("build")
 def data_build(
     config: str = typer.Option("configs/idaho.yml", "--config"),
-    rebuild: bool = typer.Option(False, "--rebuild"),
+    rebuild: bool = typer.Option(False, "--rebuild/--no-rebuild"),
 ) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = load_config(config)
@@ -43,6 +46,16 @@ def dataset_build(
     cfg = load_config(config)
     ds = build_all_datasets(cfg, target_name=target, threshold=threshold)
     typer.echo(json.dumps({"rows": int(len(ds)), "target": target, "threshold": threshold}))
+
+
+@target_app.command("build")
+def target_build(
+    config: str = typer.Option("configs/idaho.yml", "--config"),
+    rebuild: bool = typer.Option(False, "--rebuild/--no-rebuild"),
+) -> None:
+    cfg = load_config(config)
+    written = build_targets_cache(cfg, rebuild=rebuild)
+    typer.echo(json.dumps({"targets_written": written, "count": len(written)}))
 
 
 @app.command("train")

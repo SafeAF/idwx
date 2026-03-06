@@ -28,7 +28,11 @@ def build_station_dataset(
     target_name: str,
     threshold: float | None,
 ) -> pd.DataFrame:
-    targets = build_targets_for_station(daily_df, station_id=station_id, cfg=cfg)
+    target_path = cfg.cache_dir / "targets" / f"{station_id}.parquet"
+    if target_path.exists():
+        targets = pd.read_parquet(target_path)
+    else:
+        targets = build_targets_for_station(daily_df, station_id=station_id, cfg=cfg)
     y = _target_doy_table(targets, target_name=target_name, threshold=threshold)
 
     feats = build_yearly_features(daily_df, station_id=station_id, target_name=target_name)
