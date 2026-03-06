@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
 from idwx.config import Config
-from idwx.features import add_target_lags, build_yearly_features
+from idwx.features import build_features_cache, build_yearly_features
 from idwx.targets import build_targets_for_station
 
 
@@ -35,15 +33,21 @@ def build_station_dataset(
         targets = build_targets_for_station(daily_df, station_id=station_id, cfg=cfg)
     y = _target_doy_table(targets, target_name=target_name, threshold=threshold)
 
-    feats = build_yearly_features(daily_df, station_id=station_id, target_name=target_name)
+    thr_key = "none" if threshold is None else str(float(threshold)).replace(".", "p").replace("-", "m")
+    feat_path = cfg.cache_dir / "features" / f"{target_name}_thr{thr_key}" / f"{station_id}.parquet"
+    if feat_path.exists():
+        feats = pd.read_parquet(feat_path)
+    else:
+        feats = build_yearly_features(
+            daily_df,
+            station_id=station_id,
+            targets_df=targets,
+            target_name=target_name,
+            threshold=threshold,
+            start_year=int(cfg.backtest.get("start_year", 1980)),
+            end_year=int(cfg.backtest.get("end_year", 2022)),
+        )
     merged = feats.merge(y, on=["station_id", "season_year"], how="left")
-    merged = add_target_lags(merged, merged[["season_year", "target_doy"]], "target_doy")
-
-    # Attach lagged WSI, if available.
-    wsi = _target_doy_table(targets, target_name="wsi", threshold=None)
-    wsi = wsi.rename(columns={"target_doy": "wsi"}).sort_values("season_year")
-    merged = merged.merge(wsi, on=["station_id", "season_year"], how="left")
-    merged["wsi_lag1"] = merged["wsi"].shift(1)
 
     # Simple feature-imputation flags as required by contract.
     for c in ["summer_tmin_mean", "winter_tmean", "target_lag1"]:
@@ -58,6 +62,8 @@ def build_all_datasets(config: Config, target_name: str, threshold: float | None
     daily_dir = config.cache_dir / "daily"
     if not daily_dir.exists():
         raise FileNotFoundError(f"Daily cache dir does not exist: {daily_dir}")
+
+    build_features_cache(config, target_name=target_name, threshold=threshold, rebuild=False)
 
     all_frames: list[pd.DataFrame] = []
     for p in sorted(daily_dir.glob("*.parquet")):

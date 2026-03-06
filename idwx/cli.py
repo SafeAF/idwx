@@ -11,6 +11,7 @@ import typer
 from idwx.config import load_config, load_stations
 from idwx.datasets import build_all_datasets, build_future_row, load_or_build_dataset
 from idwx.eval import walk_forward_backtest, write_eval_reports
+from idwx.features import build_features_cache
 from idwx.io import build_data_cache
 from idwx.models import create_model
 from idwx.registry import latest_model_dir, save_model_artifacts
@@ -20,9 +21,11 @@ app = typer.Typer(help="Idaho weather seasonal modeling CLI")
 data_app = typer.Typer(help="Data cache operations")
 dataset_app = typer.Typer(help="Dataset operations")
 target_app = typer.Typer(help="Target table operations")
+feature_app = typer.Typer(help="Feature table operations")
 app.add_typer(data_app, name="data")
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(target_app, name="target")
+app.add_typer(feature_app, name="feature")
 
 
 @data_app.command("build")
@@ -56,6 +59,18 @@ def target_build(
     cfg = load_config(config)
     written = build_targets_cache(cfg, rebuild=rebuild)
     typer.echo(json.dumps({"targets_written": written, "count": len(written)}))
+
+
+@feature_app.command("build")
+def feature_build(
+    target: str = typer.Option("first_fall_frost", "--target"),
+    threshold: float = typer.Option(0.0, "--threshold"),
+    config: str = typer.Option("configs/idaho.yml", "--config"),
+    rebuild: bool = typer.Option(False, "--rebuild/--no-rebuild"),
+) -> None:
+    cfg = load_config(config)
+    written = build_features_cache(cfg, target_name=target, threshold=threshold, rebuild=rebuild)
+    typer.echo(json.dumps({"features_written": written, "count": len(written), "target": target, "threshold": threshold}))
 
 
 @app.command("train")
