@@ -3,9 +3,9 @@ __pycache__/
 .venv/
 
 # local artifacts
-data_cache/
-models/
-reports/
+/data_cache/
+/models/
+/reports/
 
 # local weather data root (outside repo by default, but ignore in case of symlink)
 historical_weather_data-1980-2022/

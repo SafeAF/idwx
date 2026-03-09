@@ -92,6 +92,7 @@ def train(
         stations = [station.strip().lower().replace(" ", "_")]
 
     artifacts = []
+    skipped: list[dict[str, str]] = []
     for sid in stations:
         sdf = ds[ds["station_id"] == sid].sort_values("season_year")
         if sdf["target_doy"].notna().sum() < 6:
@@ -101,7 +102,16 @@ def train(
 
         for model_name in model_names:
             model = create_model(model_name, cfg.models)
-            model.fit(X, y, meta=sdf[["station_id", "season_year"]], config=cfg.models)
+            try:
+                model.fit(X, y, meta=sdf[["station_id", "season_year"]], config=cfg.models)
+            except Exception as exc:
+                skipped.append({"station_id": sid, "model": model_name, "reason": str(exc)})
+                continue
+            train_metrics = {
+                "n_rows": int(len(sdf)),
+                "n_target_non_null": int(sdf["target_doy"].notna().sum()),
+                "model_metadata": getattr(model, "metadata", {}),
+            }
             out = save_model_artifacts(
                 model,
                 config=cfg,
@@ -109,11 +119,11 @@ def train(
                 station=sid,
                 model_name=model_name,
                 dataset=sdf,
-                metrics={},
+                metrics=train_metrics,
             )
             artifacts.append(str(out))
 
-    typer.echo(json.dumps({"trained": artifacts, "count": len(artifacts)}))
+    typer.echo(json.dumps({"trained": artifacts, "count": len(artifacts), "skipped": skipped}))
 
 
 @app.command("eval")
