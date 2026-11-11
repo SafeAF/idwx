@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import typer
 
-from idwx.config import load_config, load_stations
+from idwx.config import Config, load_config, load_stations
 from idwx.datasets import build_all_datasets, build_future_row, load_or_build_dataset
 from idwx.eval import (
     pair_baseline,
@@ -18,6 +18,14 @@ from idwx.eval import (
     write_eval_reports,
 )
 from idwx.features import build_features_cache
+from idwx.forecast_protocol import (
+    build_protocol_dataset,
+    issue_context,
+    protocol_inputs,
+    protocol_prediction_data,
+    valid_calendar_bounds,
+    validate_protocol,
+)
 from idwx.io import build_data_cache
 from idwx.models import create_model
 from idwx.registry import latest_model_dir, save_model_artifacts
@@ -32,6 +40,22 @@ app.add_typer(data_app, name="data")
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(target_app, name="target")
 app.add_typer(feature_app, name="feature")
+
+
+def _modeling_dataset(cfg: Config, target: str, threshold: float, protocol: str | None,
+                      *, season_year: int | None = None, issue_date: str | None = None,
+                      require_context: bool = False) -> pd.DataFrame:
+    if protocol is None:
+        if season_year is not None or issue_date is not None:
+            raise typer.BadParameter("Explicit forecast context requires --protocol frost_jan01_v1")
+        return load_or_build_dataset(cfg, target_name=target, threshold=threshold)
+    try:
+        validate_protocol(protocol)
+        if require_context:
+            issue_context(season_year, issue_date)
+        return build_protocol_dataset(cfg, target, threshold, through_year=season_year)
+    except (ValueError, FileNotFoundError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 @app.command("export-web")
@@ -111,9 +135,13 @@ def train(
     station: str = typer.Option("all", "--station"),
     threshold: float = typer.Option(0.0, "--threshold"),
     config: str = typer.Option("configs/idaho.yml", "--config"),
+    protocol: str | None = typer.Option(None, "--protocol", help="Opt-in frost_jan01_v1 research inputs."),
+    season_year: int | None = typer.Option(None, "--season-year"),
+    issue_date: str | None = typer.Option(None, "--issue-date"),
 ) -> None:
     cfg = load_config(config)
-    ds = load_or_build_dataset(cfg, target_name=target, threshold=threshold)
+    ds = _modeling_dataset(cfg, target, threshold, protocol, season_year=season_year,
+                           issue_date=issue_date, require_context=True)
     if ds.empty:
         raise typer.Exit("No dataset rows available for training")
 
@@ -126,9 +154,15 @@ def train(
     skipped: list[dict[str, str]] = []
     for sid in stations:
         sdf = ds[ds["station_id"] == sid].sort_values("season_year")
+        forecast_context = None
+        if protocol is not None:
+            try:
+                sdf, _, forecast_context = protocol_prediction_data(sdf, season_year, issue_date)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
         if sdf["target_doy"].notna().sum() < 6:
             continue
-        X = sdf.drop(columns=["target_doy"])
+        X = protocol_inputs(sdf) if protocol is not None else sdf.drop(columns=["target_doy"])
         y = sdf["target_doy"]
 
         for model_name in model_names:
@@ -152,6 +186,7 @@ def train(
                 dataset=sdf,
                 threshold_c=threshold,
                 metrics=train_metrics,
+                forecast_context=forecast_context,
             )
             artifacts.append(str(out))
 
@@ -164,9 +199,10 @@ def evaluate(
     models: str = typer.Option("climatology,trend,rf", "--models"),
     threshold: float = typer.Option(0.0, "--threshold"),
     config: str = typer.Option("configs/idaho.yml", "--config"),
+    protocol: str | None = typer.Option(None, "--protocol", help="Opt-in frost_jan01_v1 research inputs."),
 ) -> None:
     cfg = load_config(config)
-    ds = load_or_build_dataset(cfg, target_name=target, threshold=threshold)
+    ds = _modeling_dataset(cfg, target, threshold, protocol)
     if ds.empty:
         raise typer.BadParameter("No dataset rows available for evaluation")
 
@@ -178,13 +214,13 @@ def evaluate(
             create_model(model_name, cfg.models)  # Reject unknown models even when there are no eligible folds.
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    baseline_yearly, _, _ = walk_forward_backtest(ds, model_name="climatology", cfg=cfg)
+    baseline_yearly, _, _ = walk_forward_backtest(ds, model_name="climatology", cfg=cfg, protocol=protocol)
     outputs = []
     for model_name in model_names:
         if model_name == "climatology":
             yearly = baseline_yearly
         else:
-            yearly, _, _ = walk_forward_backtest(ds, model_name=model_name, cfg=cfg)
+            yearly, _, _ = walk_forward_backtest(ds, model_name=model_name, cfg=cfg, protocol=protocol)
         yearly = pair_baseline(yearly, baseline_yearly)
         summary, per_station = summarize_backtest(yearly)
         report_dir = write_eval_reports(
@@ -195,13 +231,15 @@ def evaluate(
             target=target,
             model_name=model_name,
             threshold_c=threshold,
+            protocol=protocol,
         )
         outputs.append({"model": model_name, "report_dir": str(report_dir),
                         "summary": {key: None if isinstance(value, float) and not math.isfinite(value) else value
                                     for key, value in summary.items()}})
 
     typer.echo(json.dumps({"target": target, "threshold_c": threshold,
-                           "validation_status": "unvalidated_research", "outputs": outputs}, indent=2, allow_nan=False))
+                           "forecast_protocol": protocol, "validation_status": "unvalidated_research", "outputs": outputs},
+                          indent=2, allow_nan=False))
 
 
 @app.command("predict")
@@ -212,20 +250,33 @@ def predict(
     threshold: float = typer.Option(0.0, "--threshold"),
     config: str = typer.Option("configs/idaho.yml", "--config"),
     pretty: bool = typer.Option(False, "--pretty"),
+    protocol: str | None = typer.Option(None, "--protocol", help="Opt-in frost_jan01_v1 research inputs."),
+    season_year: int | None = typer.Option(None, "--season-year"),
+    issue_date: str | None = typer.Option(None, "--issue-date"),
 ) -> None:
     cfg = load_config(config)
     sid = station.strip().lower().replace(" ", "_")
 
-    ds = load_or_build_dataset(cfg, target_name=target, threshold=threshold)
+    ds = _modeling_dataset(cfg, target, threshold, protocol, season_year=season_year,
+                           issue_date=issue_date, require_context=True)
     hist = ds[ds["station_id"] == sid].sort_values("season_year")
     if hist.empty:
         raise typer.Exit(f"No dataset history for station: {sid}")
 
+    forecast_context = None
+    if protocol is not None:
+        try:
+            hist, future, forecast_context = protocol_prediction_data(hist, season_year, issue_date)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    else:
+        future = build_future_row(hist)
+
     try:
         model_dir = latest_model_dir(cfg, target=target, station=sid, model_name=model,
-                                    threshold_c=threshold, dataset=hist)
+                                    threshold_c=threshold, dataset=hist, forecast_context=forecast_context)
         baseline_dir = latest_model_dir(cfg, target=target, station=sid, model_name="climatology",
-                                       threshold_c=threshold, dataset=hist)
+                                       threshold_c=threshold, dataset=hist, forecast_context=forecast_context)
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -244,7 +295,6 @@ def predict(
     else:
         raise typer.Exit(f"Unsupported model {model}")
 
-    future = build_future_row(hist)
     pred = mdl.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
 
     from idwx.models.climatology import ClimatologyModel
@@ -268,6 +318,15 @@ def predict(
         },
     }
 
+    if protocol is not None:
+        values = [float(pred[key]) for key in ("p10", "p50", "p90")]
+        if not valid_calendar_bounds(values):
+            raise typer.BadParameter("Protocol model returned invalid calendar bounds; no prediction emitted")
+        out.update(forecast_context)
+        out["training_period"] = {"start_year": int(hist.season_year.min()), "end_year": int(hist.season_year.max())}
+        out["prediction_kind"] = "unvalidated_model_interval"
+        out["prediction"] = {"lower": values[0], "point": values[1], "upper": values[2]}
+
     if pretty:
         typer.echo(pd.DataFrame([out["prediction"]]).to_string(index=False))
-    typer.echo(json.dumps(out, indent=2))
+    typer.echo(json.dumps(out, indent=2, allow_nan=False))

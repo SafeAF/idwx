@@ -49,19 +49,24 @@ MAE on identical successful station-years. Missing scores serialize as JSON
 null. See `06_EVALUATION.md` for statuses/denominators and `07_CLI_SPEC.md` for
 artifact layout and compatibility checks.
 
-These are research safeguards. No issue-date protocol, validated preprocessing
-version, forecast promotion gate or forecast export has been added.
+These are research safeguards. The opt-in `frost_jan01_v1` protocol is now
+implemented; see `17_PRESEASON_RESEARCH_PROTOCOL.md`. It uses a fixed local
+January 1 issue, a full intervening-year holdback, confirmed frost history only,
+and a common leap-year calendar. Training, evaluation and prediction share the
+same input allowlist and information boundary. It bypasses legacy derived
+caches and versions input provenance and artifact context. This is a research
+protocol; no forecast promotion gate or forecast export has been added.
 
 ## Remaining blockers found in source
 
 | Area | Evidence and consequence | Required follow-up |
 | --- | --- | --- |
-| Issue-date feature availability | `build_yearly_features` puts summer, August/September, September counts, March/April, and winter observations in every year's row regardless of target or issue date. `train` and `walk_forward_backtest` pass these columns to RF. Spring targets can see later summer weather; fall targets can see observations after the first fall event. | Define a forecast protocol for each target, including local issue date, observation delivery lag, allowed features and availability dates. Rebuild each fold from only information actually available then. Account for events that already occurred before issue. |
-| Full-history WSI normalization | `build_targets_for_station` calculates component means and standard deviations over all years. Both current WSI and `wsi_lag1` can therefore depend on later years. | Remove WSI from frost predictors until normalization is fitted inside training folds, or use raw prior-year components with training-only transformations. Audit winter target coverage separately. |
-| Forecast context | `build_future_row` still selects latest dataset year + 1. `predict` has no explicit forecast-year or issue-date arguments and does not report the last observation date or training period. Missing future weather is now honest, but backtests still use observed same-year weather. | Require explicit season year/issue date and compatible model artifacts. Apply identical availability rules to backtesting and prediction. A dataset ending in 2022 does not support an automatic current-year forecast. |
+| Issue-date feature availability | The new opt-in protocol excludes weather features and uses only confirmed frost targets through Y-2, with consistent per-row and outer-fold cutoffs. The legacy `build_yearly_features` path still includes later seasonal observations without an issue cutoff. | Use the protocol for new frost research. Audit source delivery and historical revisions before interpreting it as an as-issued forecast. Any protocol admitting more recent weather needs separate availability rules and validation. |
+| Full-history WSI normalization | Legacy WSI and its lags still use full-history normalization. The new protocol excludes all WSI inputs. | Keep WSI outside frost predictors until normalization is fitted within training folds. Audit winter target coverage separately. |
+| Forecast context | Protocol training/prediction require explicit year and matching local January 1 issue, and report cutoff, last observation and training period. Legacy prediction still chooses latest dataset year + 1. | Keep legacy output out of publication. Evaluate source freshness and the intentionally conservative holdback; an explicit research year and a reported old source date do not establish current forecast validity. |
 | Calibration and labeling | RF holds out the last 20% of training rows, but `residual_quantile` uses an interpolated residual quantile without a finite-sample rank correction. RF includes a training-residual fallback and a fixed-width prediction fallback. Its symmetric bounds are returned as `p10`/`p90`. | Define a chronological calibration protocol and minimum calibration sample. Reject unsupported intervals instead of substituting training residuals or arbitrary widths. Use interval-bound labels unless tail quantiles are established. Evaluate empirical coverage under temporal change; chronological splitting alone establishes no calibration guarantee. |
-| Date representation | Forecast datasets use actual-year `value_doy`; website history uses the common leap-year calendar. Trend quantiles can cross, and predictions are not constrained to valid target-window dates. | Choose and version a forecast calendar contract. Test leap dates, conversion, ordering and window bounds; evaluate any correction or clipping rather than silently applying it. |
-| Model identity | Threshold/configuration/dataset/schema checks, station metadata hashing and collision prevention are implemented. Protocol and feature/preprocessing provenance are still unversioned; a newly saved artifact can still originate from stale caches. | Version issue-date protocols and preprocessing, reject stale derived inputs, and verify that metadata records the effective forecast context. The registry format version is not a validation status. |
+| Date representation | The opt-in protocol normalizes onto year 2000, records the reference, and rejects crossed/nonfinite/out-of-calendar bounds. Legacy datasets still use actual-year DOY. No forecast-year date conversion or target-window support policy is validated. | Test and validate conversion and window bounds without silent clipping. Treat protocol output as numeric calendar coordinates until that policy is defined. |
+| Model identity | Protocol artifacts include issue context and input provenance, are separated by protocol/year and bypass stale derived caches. Legacy inputs remain unversioned; daily cache ingestion/vintage is not independently verified. | Add daily input provenance and source audit evidence before promotion. The registry or input version alone is not a validation status. |
 | Evaluation/reporting | Empty/skipped folds, counts, training spans, calibration counts, width and paired climatology comparisons are implemented. Upstream feature leakage, real-data results and calibration validation remain unresolved. | Re-run both frost targets with clean fold inputs and sufficient training/calibration history. Review paired error, bias, interval coverage/width, sample counts and uncertainty against predetermined promotion criteria. |
 
 ## Forecast publication requirements
@@ -97,7 +102,9 @@ static publication directory. This audit does not add a forecast schema.
 ## Cache migration and verification
 
 Old feature/dataset caches can retain the earlier whole-history imputation.
-There is no automatic migration or version rejection for those caches.
+There is no automatic migration or version rejection for legacy caches. The
+opt-in protocol bypasses them and rejects missing/incompatible protocol input
+provenance; daily caches still require rebuilding/auditing.
 In a separate cache directory, rebuild data/targets under current coverage
 rules, then run `feature build --rebuild` and `dataset build` for each target
 and threshold. Retrain models in a separate artifact directory after the
@@ -108,10 +115,11 @@ evidence of corrected preprocessing or readiness.
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/python.exe -m ruff check idwx/features.py idwx/datasets.py idwx/models/rf.py tests/test_forecast_inputs.py
 .venv/Scripts/python.exe -m ruff check idwx/eval.py idwx/registry.py idwx/cli.py tests/test_evaluation.py tests/test_registry.py
+.venv/Scripts/python.exe -m ruff check idwx/forecast_protocol.py tests/test_forecast_protocol.py
 node --test tests/web.test.mjs
 ```
 
-Verification after the evaluation/registry follow-up: 73 Python tests passed,
+Verification after the protocol follow-up: 94 Python tests passed,
 one optional live Nginx test skipped; five frontend tests passed. Targeted Ruff
 and `git diff --check` passed. Nine input regression cases cover missing calendar years,
 rolling counts, ambiguous histories, cache missingness, future-row construction,
@@ -119,6 +127,8 @@ and training-only RF preprocessing/refitting. Another 26 cases cover empty and
 skipped evaluations, invalid intervals, paired baseline scoring, CLI ordering,
 strict JSON, threshold isolation, artifact compatibility and run completion/
 collision behavior, including a synthetic CLI train/predict round trip.
+The protocol adds 21 cases, including perturbing later observations without
+changing permitted inputs or earlier predictions; see its document for scope.
 These are regression checks, not accuracy or calibration measurements.
 
 ## Infrastructure findings

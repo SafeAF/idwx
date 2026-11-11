@@ -91,3 +91,9 @@ The [forecast correctness audit](docs/16_FORECAST_CORRECTNESS_AUDIT.md) records
 input leakage fixes, required cache rebuilding, and the remaining blockers.
 Local modeling commands remain research tools; no forecasts are published.
 
+An opt-in [January 1 frost research protocol](docs/17_PRESEASON_RESEARCH_PROTOCOL.md)
+now shares explicit information cutoffs across training, backtesting and
+prediction. It uses confirmed older frost dates, excludes weather/WSI inputs,
+and requires an explicit forecast year and issue date. It remains unvalidated
+and does not add forecasts to the website.
+

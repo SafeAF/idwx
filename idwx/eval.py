@@ -6,6 +6,14 @@ import numpy as np
 import pandas as pd
 
 from idwx.config import Config
+from idwx.forecast_protocol import (
+    PROTOCOL_ID,
+    issue_context,
+    protocol_inputs,
+    protocol_training_data,
+    valid_calendar_bounds,
+    validate_protocol,
+)
 from idwx.models import create_model
 from idwx.registry import threshold_key
 
@@ -13,6 +21,8 @@ YEARLY_COLUMNS = [
     "station_id", "season_year", "actual", "pred_p10", "pred_p50", "pred_p90",
     "model_name", "status", "reason", "training_start_year", "training_end_year",
     "n_train_years", "n_calibration_rows",
+    "forecast_protocol", "issue_date", "information_cutoff_date",
+    "calendar_reference_year",
 ]
 
 
@@ -56,7 +66,10 @@ def pair_baseline(yearly: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame:
     return result.drop(columns="baseline_actual")
 
 
-def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config, *, protocol: str | None = None) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+    if protocol is not None:
+        validate_protocol(protocol)
+        protocol_inputs(dataset)
     req = ["station_id", "season_year", "target_doy"]
     for c in req:
         if c not in dataset.columns:
@@ -88,12 +101,18 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config) -
     for sid, sdf in dataset.groupby("station_id"):
         sdf = sdf.sort_values("season_year")
         for t in range(start_year, end_year + 1):
-            train = sdf[(sdf["season_year"] < t) & sdf["target_doy"].notna()].copy()
+            train = (protocol_training_data(sdf, t) if protocol is not None else
+                     sdf[(sdf["season_year"] < t) & sdf["target_doy"].notna()].copy())
             test = sdf[sdf["season_year"] == t].copy()
             row = {col: np.nan for col in YEARLY_COLUMNS}
             row.update(station_id=sid, season_year=t, model_name=model_name, reason="",
                        n_train_years=len(train), training_start_year=train.season_year.min(),
                        training_end_year=train.season_year.max())
+            if protocol is not None:
+                context = issue_context(t, f"{t:04d}-01-01")
+                row.update(forecast_protocol=PROTOCOL_ID, issue_date=context["issue_date"],
+                           information_cutoff_date=context["information_cutoff_date"],
+                           calendar_reference_year=context["calendar_reference_year"])
             if test.empty:
                 row["status"] = "missing_test_year"
                 rows.append(row)
@@ -108,9 +127,9 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config) -
                 rows.append(row)
                 continue
 
-            X_train = train.drop(columns=["target_doy"])
+            X_train = protocol_inputs(train) if protocol is not None else train.drop(columns=["target_doy"])
             y_train = train["target_doy"]
-            X_test = test.drop(columns=["target_doy"])
+            X_test = protocol_inputs(test) if protocol is not None else test.drop(columns=["target_doy"])
 
             model = create_model(model_name, cfg.models)
             try:
@@ -125,7 +144,9 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config) -
                 raise ValueError("Model must return one prediction with p10/p50/p90 per test row")
             bounds = pred.iloc[0][["p10", "p50", "p90"]].to_numpy(dtype=float)
             row.update(zip(["pred_p10", "pred_p50", "pred_p90"], bounds))
-            row["status"] = "evaluated" if np.isfinite(bounds).all() and bounds[0] <= bounds[1] <= bounds[2] else "invalid_prediction"
+            valid = (valid_calendar_bounds(bounds) if protocol is not None else
+                     np.isfinite(bounds).all() and bounds[0] <= bounds[1] <= bounds[2])
+            row["status"] = "evaluated" if valid else "invalid_prediction"
             rows.append(row)
 
     yearly = pd.DataFrame(rows, columns=YEARLY_COLUMNS)
@@ -141,8 +162,12 @@ def write_eval_reports(
     target: str,
     model_name: str,
     threshold_c: float | None,
+    protocol: str | None = None,
 ) -> Path:
     out = config.reports_dir / target / model_name / threshold_key(threshold_c)
+    if protocol is not None:
+        validate_protocol(protocol)
+        out = out / protocol
     out.mkdir(parents=True, exist_ok=True)
 
     summary_df = pd.DataFrame([summary])

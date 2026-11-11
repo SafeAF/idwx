@@ -92,7 +92,22 @@ loaded. Preserve them for research reproducibility, rebuild corrected caches,
 and retrain to produce new compatible artifacts. The artifact version is a
 registry format version, not proof of validated feature availability or cache
 freshness. Issue-date protocols and version rejection of old derived caches
-remain outstanding; see `16_FORECAST_CORRECTNESS_AUDIT.md`.
+remain outstanding for this legacy path; see `16_FORECAST_CORRECTNESS_AUDIT.md`.
+
+### Opt-in January 1 frost research
+
+`train`, `eval` and `predict` accept `--protocol frost_jan01_v1`. Training and
+prediction additionally require `--season-year YEAR --issue-date YEAR-01-01`.
+The protocol excludes weather/WSI, recomputes confirmed frost records from daily
+caches, and holds back the entire preceding calendar year. Inputs and targets
+use the shared leap-year calendar. Artifact paths add
+`frost_jan01_v1/season_YEAR/` after the threshold directory, and lookup verifies
+the exact issue context and input provenance. Protocol reports add a protocol
+subdirectory. These artifacts cannot substitute for legacy models or another
+forecast year. No modeling mode publishes predictions to the website.
+
+See [the protocol contract and examples](17_PRESEASON_RESEARCH_PROTOCOL.md)
+for the information cutoff, output fields and remaining validation requirements.
 
 ## Config keys
 

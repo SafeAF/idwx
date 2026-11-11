@@ -100,6 +100,10 @@ larger set and must not be substituted in that subtraction. Baseline report
 files are written when climatology is explicitly requested; its paired scores
 are included for each requested model regardless.
 
-All modeling output remains `unvalidated_research`. These reporting corrections
-do not resolve same-season feature leakage, full-history WSI normalization,
-or calibration. See [the forecast audit](16_FORECAST_CORRECTNESS_AUDIT.md).
+All modeling output remains `unvalidated_research`. The default legacy path
+still has seasonal feature leakage and full-history WSI limitations. The new
+opt-in `--protocol frost_jan01_v1` excludes those predictors, uses only training
+labels through test year minus two, and adds explicit issue/cutoff/calendar
+columns and a protocol report subdirectory. It shares its input rules with
+training and prediction; see [the protocol](17_PRESEASON_RESEARCH_PROTOCOL.md).
+Calibration and real-data validation remain outstanding for every mode.

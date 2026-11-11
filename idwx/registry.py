@@ -80,11 +80,14 @@ def git_commit_hash() -> str:
 
 def model_run_dir(
     config: Config, target: str, station: str, model_name: str,
-    *, threshold_c: float | None, run_id: str | None = None,
+    *, threshold_c: float | None, run_id: str | None = None, forecast_context: dict | None = None,
 ) -> Path:
     rid = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "_" + uuid4().hex
-    return (config.models_dir / _identifier(target) / _identifier(station)
-            / _identifier(model_name) / threshold_key(threshold_c) / _identifier(rid))
+    base = (config.models_dir / _identifier(target) / _identifier(station)
+            / _identifier(model_name) / threshold_key(threshold_c))
+    if forecast_context is not None:
+        base = base / _identifier(forecast_context["protocol_id"]) / _identifier(f"season_{forecast_context['season_year']}")
+    return base / _identifier(rid)
 
 
 def save_model_artifacts(
@@ -97,15 +100,18 @@ def save_model_artifacts(
     threshold_c: float | None,
     metrics: dict[str, Any] | None = None,
     run_id: str | None = None,
+    forecast_context: dict | None = None,
 ) -> Path:
     out = model_run_dir(config, target=target, station=station, model_name=model_name,
-                        threshold_c=threshold_c, run_id=run_id)
+                        threshold_c=threshold_c, run_id=run_id, forecast_context=forecast_context)
     out.mkdir(parents=True, exist_ok=False)
     model.save(out)
 
     cfg_out = {
         "artifact_version": ARTIFACT_VERSION,
         "validation_status": "unvalidated_research",
+        "forecast_context": forecast_context,
+        "input_provenance": dataset.attrs if forecast_context is not None else None,
         "threshold_c": threshold_c,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit_hash": git_commit_hash(),
@@ -135,9 +141,10 @@ def save_model_artifacts(
 
 def latest_model_dir(
     config: Config, target: str, station: str, model_name: str,
-    *, threshold_c: float | None, dataset: pd.DataFrame | None = None,
+    *, threshold_c: float | None, dataset: pd.DataFrame | None = None, forecast_context: dict | None = None,
 ) -> Path:
-    base = model_run_dir(config, target, station, model_name, threshold_c=threshold_c, run_id="lookup").parent
+    base = model_run_dir(config, target, station, model_name, threshold_c=threshold_c,
+                         run_id="lookup", forecast_context=forecast_context).parent
     if not base.exists():
         raise FileNotFoundError(f"No threshold-specific model directory: {base}. Retrain legacy models.")
     runs = sorted(p for p in base.iterdir() if p.is_dir() and (p / "config.yml").is_file())
@@ -150,7 +157,12 @@ def latest_model_dir(
     except (OSError, yaml.YAMLError) as exc:
         raise ValueError(f"Unreadable model metadata: {latest}. Retrain this model.") from exc
     expected = {"artifact_version": ARTIFACT_VERSION, "target": target, "station": station,
-                "model_name": model_name, "threshold_c": threshold_c, "config_hash": hash_config(config)}
+                "model_name": model_name, "threshold_c": threshold_c, "config_hash": hash_config(config),
+                "forecast_context": forecast_context}
+    if forecast_context is not None:
+        if dataset is None:
+            raise ValueError("Protocol model lookup requires the training dataset")
+        expected["input_provenance"] = dataset.attrs
     if dataset is not None:
         expected["dataset_hash"] = hash_dataset(dataset)
         expected["feature_schema_hash"] = hash_feature_schema([c for c in dataset if c != "target_doy"])
