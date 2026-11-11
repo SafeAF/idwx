@@ -18,6 +18,7 @@ from idwx.eval import (
     write_eval_reports,
 )
 from idwx.features import build_features_cache
+from idwx.forecast_dates import interpret_forecast_dates
 from idwx.forecast_protocol import (
     build_protocol_dataset,
     issue_context,
@@ -310,10 +311,18 @@ def predict(
         values = [float(pred[key]) for key in ("p10", "p50", "p90")]
         if not valid_calendar_bounds(values):
             raise typer.BadParameter("Protocol model returned invalid calendar bounds; no prediction emitted")
+        try:
+            dates = interpret_forecast_dates(values, season_year, forecast_context["target_window"])
+            baseline_dates = interpret_forecast_dates([float(baseline[key]) for key in ("p10", "p50", "p90")],
+                                                       season_year, forecast_context["target_window"])
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         out.update(forecast_context)
         out["training_period"] = {"start_year": int(hist.season_year.min()), "end_year": int(hist.season_year.max())}
         out["prediction_kind"] = "unvalidated_model_interval"
         out["prediction"] = {"lower": values[0], "point": values[1], "upper": values[2]}
+        out["prediction_dates"] = dates
+        out["baseline_climatology_dates"] = baseline_dates
 
     if pretty:
         typer.echo(pd.DataFrame([out["prediction"]]).to_string(index=False))

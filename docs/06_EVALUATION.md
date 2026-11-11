@@ -118,3 +118,13 @@ coverage and lower/upper miss rates. Nominal coverage is blank/null for models
 without such metadata. These diagnostics do not establish calibration; see
 [the RF contract](18_RF_CALIBRATION_CONTRACT.md) for partition rules and
 remaining empirical checks.
+
+Protocol date policy version 1 now rejects out-of-window or unsupported
+forecast-year intervals and records rejection reasons. `n_invalid_predictions`
+counts these alongside other invalid predictions. Rows also contain actual and
+predicted dates, elapsed-day error/width and date coverage. Summary/per-station
+`date_*` scores and paired date baseline comparisons are separate from the
+unchanged raw calendar-coordinate metrics. Input version 2 records policy and
+effective windows; earlier protocol artifacts require retraining. See
+[the date policy](19_FORECAST_DATE_POLICY.md) for exact endpoint/point rules,
+leap handling, metric names and denominators.

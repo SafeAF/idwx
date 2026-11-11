@@ -116,6 +116,13 @@ See `18_RF_CALIBRATION_CONTRACT.md` for sample rules and configuration.
 See [the protocol contract and examples](17_PRESEASON_RESEARCH_PROTOCOL.md)
 for the information cutoff, output fields and remaining validation requirements.
 
+Protocol input version 2 additionally requires date policy version 1. Forecast
+context records the effective target window; older protocol artifacts must be
+rebuilt/retrained. Prediction preserves numeric bounds and adds
+`prediction_dates` and `baseline_climatology_dates`, including elapsed endpoint
+width. Out-of-window or unsupported date intervals fail without partial JSON.
+See `19_FORECAST_DATE_POLICY.md` for date conversion and paired date metrics.
+
 ## Config keys
 
 - data_root

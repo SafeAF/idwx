@@ -7,11 +7,13 @@ import numpy as np
 import pandas as pd
 
 from idwx.config import Config, load_stations
+from idwx.forecast_dates import DATE_POLICY_VERSION
+from idwx.forecast_dates import valid_calendar_bounds as _valid_calendar_bounds
 from idwx.frost import validated_daily, window_event
 from idwx.history import CALENDAR_YEAR, calendar_day
 
 PROTOCOL_ID = "frost_jan01_v1"
-INPUT_VERSION = 1
+INPUT_VERSION = 2
 FROST_TARGETS = {"last_spring_frost", "first_fall_frost"}
 FEATURE_COLUMNS = ["station_id", "season_year", "year_index", "target_lag2",
                    "target_roll3_lag2", "target_roll5_lag2", "target_lag2_missing"]
@@ -23,9 +25,8 @@ def validate_protocol(protocol: str) -> None:
 
 
 def valid_calendar_bounds(values: list[float] | np.ndarray) -> bool:
-    bounds = np.asarray(values, dtype=float)
-    return bool(bounds.shape == (3,) and np.isfinite(bounds).all()
-                and 1 <= bounds[0] <= bounds[1] <= bounds[2] <= 366)
+    """Compatibility entry point for the shared calendar validator."""
+    return _valid_calendar_bounds(values)
 
 
 def issue_context(season_year: int | None, issue_date: str | None) -> dict:
@@ -37,6 +38,7 @@ def issue_context(season_year: int | None, issue_date: str | None) -> dict:
     if issue_date != expected:
         raise ValueError(f"{PROTOCOL_ID} requires issue date {expected} (station-local January 1)")
     return {"protocol_id": PROTOCOL_ID, "input_version": INPUT_VERSION,
+            "date_policy_version": DATE_POLICY_VERSION,
             "calendar_reference_year": CALENDAR_YEAR, "season_year": season_year,
             "issue_date": issue_date, "information_cutoff_date": date(season_year - 2, 12, 31).isoformat()}
 
@@ -81,9 +83,11 @@ def build_station_protocol_dataset(
                      "target_date": event["value_date"].date().isoformat() if event["status"] == "observed" else None,
                      "issue_date": context["issue_date"], "information_cutoff_date": context["information_cutoff_date"],
                      "last_observation_date": available.max().date().isoformat() if len(available) else None,
+                     "window_start_month_day": window["start"], "window_end_month_day": window["end"],
                      "station_timezone": timezone or cfg.timezone})
     result = pd.DataFrame(rows)
     result.attrs = {"forecast_protocol": PROTOCOL_ID, "input_version": INPUT_VERSION,
+                    "date_policy_version": DATE_POLICY_VERSION,
                     "calendar_reference_year": CALENDAR_YEAR, "target": target, "threshold_c": float(threshold_c)}
     return result
 
@@ -106,6 +110,7 @@ def build_protocol_dataset(cfg: Config, target: str, threshold_c: float, *, thro
 def protocol_inputs(dataset: pd.DataFrame) -> pd.DataFrame:
     if (dataset.attrs.get("forecast_protocol") != PROTOCOL_ID
             or dataset.attrs.get("input_version") != INPUT_VERSION
+            or dataset.attrs.get("date_policy_version") != DATE_POLICY_VERSION
             or dataset.attrs.get("calendar_reference_year") != CALENDAR_YEAR):
         raise ValueError("Missing or incompatible protocol input provenance; rebuild from daily caches")
     return dataset[FEATURE_COLUMNS].copy()
@@ -132,6 +137,8 @@ def protocol_prediction_data(dataset: pd.DataFrame, season_year: int, issue_date
     if history.empty:
         raise ValueError("No confirmed history before the protocol information cutoff")
     context.update(last_observation_date=future.iloc[0].last_observation_date,
-                   station_timezone=future.iloc[0].station_timezone)
+                   station_timezone=future.iloc[0].station_timezone,
+                   target_window={"start": future.iloc[0].window_start_month_day,
+                                  "end": future.iloc[0].window_end_month_day})
     # The actual outcome is deliberately absent from prediction inputs.
     return history, protocol_inputs(future), context

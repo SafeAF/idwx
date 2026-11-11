@@ -1,19 +1,21 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from idwx.config import Config
+from idwx.forecast_dates import interpret_forecast_dates
 from idwx.forecast_protocol import (
     PROTOCOL_ID,
     issue_context,
     protocol_inputs,
     protocol_training_data,
-    valid_calendar_bounds,
     validate_protocol,
 )
+from idwx.history import calendar_day
 from idwx.models import create_model
 from idwx.models.conformal import InsufficientCalibrationError
 from idwx.registry import threshold_key
@@ -27,6 +29,9 @@ YEARLY_COLUMNS = [
     "fitting_start_year", "fitting_end_year", "calibration_start_year", "calibration_end_year",
     "n_fitting_years", "n_calibration_years", "n_embargo_rows", "nominal_coverage",
     "calibration_rank", "interval_semantics",
+    "date_policy_version", "window_start_month_day", "window_end_month_day", "actual_date",
+    "pred_lower_date", "pred_point_date", "pred_upper_date", "date_error_days",
+    "date_interval_covered", "date_interval_width_days",
 ]
 
 
@@ -45,6 +50,7 @@ def _metrics(df: pd.DataFrame) -> dict:
     summary = {
         "status": "evaluated" if len(evaluated) else "insufficient_evaluation",
         "n_folds": len(df), "n_evaluated": len(evaluated), "n_skipped": len(df) - len(evaluated),
+        "n_invalid_predictions": int(df.status.eq("invalid_prediction").sum()),
         "mae": float(e.abs().mean()) if len(e) else np.nan,
         "rmse": float(np.sqrt((e**2).mean())) if len(e) else np.nan,
         "bias": float(e.mean()) if len(e) else np.nan,
@@ -57,12 +63,28 @@ def _metrics(df: pd.DataFrame) -> dict:
     summary["coverage_minus_nominal"] = summary["coverage"] - summary["nominal_coverage"]
     summary["lower_miss_rate"] = float((evaluated.actual < evaluated.pred_p10).mean()) if len(e) else np.nan
     summary["upper_miss_rate"] = float((evaluated.actual > evaluated.pred_p90).mean()) if len(e) else np.nan
+    date_errors = pd.to_numeric(evaluated.get("date_error_days", pd.Series(index=evaluated.index, dtype=float)), errors="coerce")
+    dated = evaluated[np.isfinite(date_errors)]
+    summary.update(
+        n_date_evaluated=len(dated),
+        date_mae_days=float(dated.date_error_days.abs().mean()) if len(dated) else np.nan,
+        date_rmse_days=float(np.sqrt((dated.date_error_days**2).mean())) if len(dated) else np.nan,
+        date_bias_days=float(dated.date_error_days.mean()) if len(dated) else np.nan,
+        date_coverage=float(dated.date_interval_covered.mean()) if len(dated) else np.nan,
+        mean_date_interval_width_days=float(dated.date_interval_width_days.mean()) if len(dated) else np.nan,
+    )
     if "baseline_pred_p50" in evaluated:
         paired = evaluated[np.isfinite(pd.to_numeric(evaluated["baseline_pred_p50"], errors="coerce"))]
         summary["n_paired"] = len(paired)
         summary["paired_model_mae"] = float((paired.pred_p50 - paired.actual).abs().mean()) if len(paired) else np.nan
         summary["baseline_mae"] = float((paired.baseline_pred_p50 - paired.actual).abs().mean()) if len(paired) else np.nan
         summary["delta_mae"] = summary["paired_model_mae"] - summary["baseline_mae"]
+    if "baseline_date_error_days" in dated:
+        paired_dates = dated[np.isfinite(pd.to_numeric(dated.baseline_date_error_days, errors="coerce"))]
+        summary["n_date_paired"] = len(paired_dates)
+        summary["paired_date_model_mae_days"] = float(paired_dates.date_error_days.abs().mean()) if len(paired_dates) else np.nan
+        summary["baseline_date_mae_days"] = float(paired_dates.baseline_date_error_days.abs().mean()) if len(paired_dates) else np.nan
+        summary["delta_date_mae_days"] = summary["paired_date_model_mae_days"] - summary["baseline_date_mae_days"]
     return summary
 
 
@@ -75,8 +97,12 @@ def summarize_backtest(yearly: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
 def pair_baseline(yearly: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame:
     """Attach only matching successful baseline folds, never an aggregate from other years."""
     keys = ["station_id", "season_year"]
-    valid = baseline[baseline.status == "evaluated"][keys + ["actual", "pred_p50"]]
-    result = yearly.merge(valid.rename(columns={"actual": "baseline_actual", "pred_p50": "baseline_pred_p50"}),
+    columns = ["actual", "pred_p50"]
+    if "date_error_days" in baseline and "date_error_days" in yearly:
+        columns.append("date_error_days")
+    valid = baseline[baseline.status == "evaluated"][keys + columns]
+    result = yearly.merge(valid.rename(columns={"actual": "baseline_actual", "pred_p50": "baseline_pred_p50",
+                                                "date_error_days": "baseline_date_error_days"}),
                           on=keys, how="left", validate="one_to_one")
     matched = result.baseline_actual.notna()
     if not result.loc[matched, "actual"].eq(result.loc[matched, "baseline_actual"]).all():
@@ -130,7 +156,10 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config, *
                 context = issue_context(t, f"{t:04d}-01-01")
                 row.update(forecast_protocol=PROTOCOL_ID, issue_date=context["issue_date"],
                            information_cutoff_date=context["information_cutoff_date"],
-                           calendar_reference_year=context["calendar_reference_year"])
+                           calendar_reference_year=context["calendar_reference_year"],
+                           date_policy_version=context["date_policy_version"],
+                           window_start_month_day=sdf.iloc[0].window_start_month_day,
+                           window_end_month_day=sdf.iloc[0].window_end_month_day)
             if test.empty:
                 row["status"] = "missing_test_year"
                 rows.append(row)
@@ -140,6 +169,11 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config, *
                 row["status"] = "missing_actual"
                 rows.append(row)
                 continue
+            if protocol is not None:
+                actual_date = date.fromisoformat(test.iloc[0].target_date)
+                if actual_date.year != t or calendar_day(actual_date) != row["actual"]:
+                    raise ValueError("Protocol target date and calendar coordinate disagree")
+                row["actual_date"] = actual_date.isoformat()
             if len(train) < min_train_years:
                 row["status"] = "insufficient_training"
                 rows.append(row)
@@ -168,9 +202,20 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config, *
                 raise ValueError("Model must return one prediction with p10/p50/p90 per test row")
             bounds = pred.iloc[0][["p10", "p50", "p90"]].to_numpy(dtype=float)
             row.update(zip(["pred_p10", "pred_p50", "pred_p90"], bounds))
-            valid = (valid_calendar_bounds(bounds) if protocol is not None else
-                     np.isfinite(bounds).all() and bounds[0] <= bounds[1] <= bounds[2])
-            row["status"] = "evaluated" if valid else "invalid_prediction"
+            if protocol is not None:
+                window = {"start": row["window_start_month_day"], "end": row["window_end_month_day"]}
+                try:
+                    dates = interpret_forecast_dates(bounds, t, window)
+                except ValueError as exc:
+                    row.update(status="invalid_prediction", reason=str(exc))
+                else:
+                    row.update(status="evaluated", pred_lower_date=dates["lower"], pred_point_date=dates["point"],
+                               pred_upper_date=dates["upper"], date_interval_width_days=dates["interval_width_days"],
+                               date_error_days=(date.fromisoformat(dates["point"]) - actual_date).days,
+                               date_interval_covered=dates["lower"] <= row["actual_date"] <= dates["upper"])
+            else:
+                valid = np.isfinite(bounds).all() and bounds[0] <= bounds[1] <= bounds[2]
+                row["status"] = "evaluated" if valid else "invalid_prediction"
             rows.append(row)
 
     yearly = pd.DataFrame(rows, columns=YEARLY_COLUMNS)

@@ -102,3 +102,8 @@ held-out calendar years and a finite-sample residual rank. Unsupported intervals
 fail explicitly; older RF artifacts require retraining. Coverage on real weather
 data still needs validation, and forecasts remain unpublished.
 
+The [forecast date policy](docs/19_FORECAST_DATE_POLICY.md) now enforces station
+windows and maps research bounds onto actual forecast-year dates. Backtests
+report elapsed-day errors separately from raw calendar-coordinate errors.
+Earlier protocol artifacts require rebuilding/retraining under input version 2.
+

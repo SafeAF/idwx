@@ -61,12 +61,13 @@ estimate the probability that an event occurs in a season.
 Dates are mapped by month/day onto **leap year 2000**: March 1 is always
 calendar day 61. Internal `target_doy` and model `p10`/`p50`/`p90` names are
 retained for compatibility but refer to that common calendar in this protocol.
-These names do not certify forecast tail probabilities. Fractional model
-outputs remain numeric calendar coordinates; no rounding into a calendar date
-or conversion of February 29 into a non-leap forecast year is performed.
-Nonfinite, crossed or out-of-calendar [1, 366] bounds are rejected for protocol
-prediction and marked `invalid_prediction` in evaluation. Target-window bounds
-and other date conversion policies still require validation.
+These names do not certify forecast tail probabilities. Raw fractional outputs
+remain numeric coordinates. Date policy version 1 now adds an exact discrete
+date representation inside the configured station window, with a nearest
+supported point date and a later-date tie rule. Nonfinite, crossed,
+out-of-calendar, out-of-window or unsupported intervals are rejected rather
+than clipped. See `19_FORECAST_DATE_POLICY.md` for leap-day handling, separate
+elapsed-day metrics and remaining empirical validation.
 
 ## Rebuilding inputs and artifact identity
 
@@ -90,7 +91,10 @@ models/<target>/<station>/<model>/threshold_0p0/frost_jan01_v1/season_2024/<run-
 The registry format remains version 2; its optional forecast context
 now records protocol/input/calendar versions, explicit year/issue/cutoff,
 effective station timezone and last recorded observation before the cutoff.
-Input provenance is recorded separately. Both are verified alongside the
+Input provenance is recorded separately. Input version 2 and date policy
+version 1 are required; effective window boundaries are included in input
+rows and forecast context. Earlier protocol artifacts require retraining.
+Context/provenance are verified alongside the
 configuration, dataset and feature schema before loading a protocol model.
 Legacy artifacts and artifacts for another protocol/year cannot be selected
 as substitutes. Configuration/data changes inside the permitted history
@@ -125,9 +129,10 @@ existing fold statuses, counts and paired baseline predictions.
 
 Prediction JSON includes `validation_status: unvalidated_research`, explicit
 context, training period and `prediction_kind: unvalidated_model_interval`.
-Its `prediction` object uses `lower`, `point`, `upper`; the separately named
-`baseline_climatology` retains the historical distribution field names.
-Neither is published by `export-web`.
+Its numeric `prediction` object uses `lower`, `point`, `upper`; the separately
+named `baseline_climatology` retains the historical distribution field names.
+`prediction_dates` and `baseline_climatology_dates` add actual forecast-year
+dates under the versioned policy. None are published by `export-web`.
 
 ## Verification and remaining requirements
 
@@ -136,15 +141,15 @@ later-observation perturbations, earlier-fold invariance, approved model
 columns, the training holdback, missing/partial years, leap normalization,
 station windows, timezone context, issue-date validation, cache bypass,
 protocol artifact context, calendar-bound rejection, and CLI train/predict
-round trips with climatology/trend and RF. Full verification after the calibration
-follow-up: **132 Python
-tests passed**, one optional Nginx test skipped; five frontend tests passed.
+round trips with climatology/trend and RF. Full verification after the date
+policy follow-up: **169 Python tests passed**, one optional Nginx test skipped;
+five frontend tests passed.
 Targeted Ruff and `git diff --check` passed.
 
 Remaining blockers include real-data/vintage auditing, calibrated intervals,
 sufficient calibration samples, threshold/window-specific performance and
-baseline comparisons, promotion criteria, forecast-window support, calendar
-conversion, and production browser/TLS checks. This protocol supplies a
+baseline comparisons, promotion criteria, empirical assessment of the date
+interpretation policy, and production browser/TLS checks. This protocol supplies a
 reproducible research boundary; it is not evidence of predictive accuracy or
 calibration. No forecasts are published.
 
@@ -152,6 +157,7 @@ Subsequent calibration follow-up: RF now requires the separately versioned
 held-out calibration contract described in `18_RF_CALIBRATION_CONTRACT.md`.
 It reserves at least five calibration years by default plus a full year after
 the fitting partition, and requires eight fitting years. Earlier RF artifacts
-must be retrained. The protocol's own input version is unchanged; its RF round
-trip now supplies the larger required
-history. Temporal coverage and real-data validation remain unmeasured.
+must be retrained. The RF round trip supplies the larger required history.
+The subsequent date-policy follow-up increments protocol input version to 2;
+the January 1 feature/availability rules remain unchanged. Temporal coverage
+and real-data validation remain unmeasured.

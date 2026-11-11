@@ -97,8 +97,9 @@ the marker are incompatible and must be retrained; no older-run fallback is
 used. Direct `RFConformalModel.load` likewise rejects old/unfitted calibration
 state. Climatology and trend require no RF calibration marker, although any
 configuration change is still subject to the registry's conservative config
-hash checks. Protocol/input versions are unchanged because the predictor
-availability contract has not changed.
+hash checks. The calibration correction itself did not change predictor
+availability. The later date-policy follow-up requires protocol input version
+2 and date policy version 1; rebuild/retrain earlier protocol artifacts.
 
 ## Evaluation diagnostics
 
@@ -131,7 +132,7 @@ fitting-only preprocessing, calibration perturbations, single forest fitting,
 failed calibration/refits, rejection of fallback widths, metadata and report
 diagnostics, serialization, and legacy RF rejection.
 
-Full verification: **132 Python tests passed**, one optional live Nginx test
+Full verification after the date-policy follow-up: **169 Python tests passed**, one optional live Nginx test
 skipped; five frontend tests passed. Targeted Ruff and `git diff --check`
 passed. These are implementation regressions, not predictive performance or
 coverage measurements. The RF protocol round trip now supplies enough history
@@ -139,6 +140,6 @@ for the larger held-out partition and gap.
 
 Real source/vintage audits, sufficient independent validation data, temporal
 calibration assessment, station/threshold/window performance, paired baseline
-comparisons, forecast-window/date conversion policy, predetermined promotion
+comparisons under the implemented date policy, predetermined promotion
 criteria, browser verification and production TLS remain outstanding. Do not
 publish model predictions based solely on passing these tests.

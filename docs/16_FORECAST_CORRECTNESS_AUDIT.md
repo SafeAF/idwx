@@ -65,6 +65,13 @@ width fallbacks are removed. Actual partitions, nominal coverage and observed
 coverage diagnostics are reported. Earlier RF artifacts require retraining.
 This does not establish empirical coverage or weather-series exchangeability.
 
+Date policy version 1 is now shared by protocol prediction and evaluation;
+see `19_FORECAST_DATE_POLICY.md`. It rejects bounds outside effective station
+windows and intervals containing no actual forecast-year date, preserves raw
+coordinates, and adds explicit date representations and elapsed-day metrics.
+Protocol input version 2 records the policy/window and requires retraining
+earlier artifacts. No forecast publication gate is enabled.
+
 ## Remaining blockers found in source
 
 | Area | Evidence and consequence | Required follow-up |
@@ -73,7 +80,7 @@ This does not establish empirical coverage or weather-series exchangeability.
 | Full-history WSI normalization | Legacy WSI and its lags still use full-history normalization. The new protocol excludes all WSI inputs. | Keep WSI outside frost predictors until normalization is fitted within training folds. Audit winter target coverage separately. |
 | Forecast context | Protocol training/prediction require explicit year and matching local January 1 issue, and report cutoff, last observation and training period. Legacy prediction still chooses latest dataset year + 1. | Keep legacy output out of publication. Evaluate source freshness and the intentionally conservative holdback; an explicit research year and a reported old source date do not establish current forecast validity. |
 | Calibration and labeling | RF now has a versioned whole-year chronological split, explicit sample floors, one-year gap, finite-sample rank and no fallback intervals. Metadata and protocol output label symmetric bounds explicitly; legacy internal field names remain aliases. Empirical temporal coverage is unmeasured. | Validate coverage/width and tail miss rates using sufficient historical folds and a final holdout. Review dependence, drift and pooled-station effects. Choose publication sample/calibration criteria before final holdout review; chronological splitting alone establishes no calibration guarantee. |
-| Date representation | The opt-in protocol normalizes onto year 2000, records the reference, and rejects crossed/nonfinite/out-of-calendar bounds. Legacy datasets still use actual-year DOY. No forecast-year date conversion or target-window support policy is validated. | Test and validate conversion and window bounds without silent clipping. Treat protocol output as numeric calendar coordinates until that policy is defined. |
+| Date representation | Date policy version 1 now enforces effective window bounds, converts to supported actual-year dates and reports elapsed-day metrics alongside unchanged raw coordinates. Leap days, empty support, ties and station overrides have synthetic regression coverage. Legacy datasets still use actual-year DOY. | Measure real-data performance and coverage after date interpretation, review invalid-fold counts, and predeclare promotion criteria for the resulting forecast product. Passing conversion tests does not validate a model. |
 | Model identity | Protocol artifacts include issue context and input provenance, are separated by protocol/year and bypass stale derived caches. Legacy inputs remain unversioned; daily cache ingestion/vintage is not independently verified. | Add daily input provenance and source audit evidence before promotion. The registry or input version alone is not a validation status. |
 | Evaluation/reporting | Empty/skipped folds, counts, training spans, calibration counts, width and paired climatology comparisons are implemented. Upstream feature leakage, real-data results and calibration validation remain unresolved. | Re-run both frost targets with clean fold inputs and sufficient training/calibration history. Review paired error, bias, interval coverage/width, sample counts and uncertainty against predetermined promotion criteria. |
 
@@ -125,10 +132,11 @@ evidence of corrected preprocessing or readiness.
 .venv/Scripts/python.exe -m ruff check idwx/eval.py idwx/registry.py idwx/cli.py tests/test_evaluation.py tests/test_registry.py
 .venv/Scripts/python.exe -m ruff check idwx/forecast_protocol.py tests/test_forecast_protocol.py
 .venv/Scripts/python.exe -m ruff check idwx/models/conformal.py idwx/models/rf.py idwx/models/__init__.py tests/test_calibration.py
+.venv/Scripts/python.exe -m ruff check idwx/forecast_dates.py tests/test_forecast_dates.py
 node --test tests/web.test.mjs
 ```
 
-Verification after the calibration follow-up: 132 Python tests passed,
+Verification after the date-policy follow-up: 169 Python tests passed,
 one optional live Nginx test skipped; five frontend tests passed. Targeted Ruff
 and `git diff --check` passed. Nine input regression cases cover missing calendar years,
 rolling counts, ambiguous histories, cache missingness, future-row construction,
@@ -141,6 +149,9 @@ changing permitted inputs or earlier predictions; see its document for scope.
 The calibration follow-up adds 38 cases for finite ranks, explicit failures,
 chronological partitions, preprocessing isolation, refits, state/serialization
 and reporting. See the calibration contract for detail.
+The date-policy follow-up adds 37 cases for calendar/window constraints,
+conversion, actual-date consistency, elapsed-day metrics, paired baselines,
+input migration and CLI error handling.
 These are regression checks, not accuracy or calibration measurements.
 
 ## Infrastructure findings
