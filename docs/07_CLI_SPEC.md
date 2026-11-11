@@ -13,6 +13,19 @@ Args:
 - `--config configs/idaho.yml`
 - `--rebuild`
 
+### `idwx data audit`
+Inspect configured raw CSVs without modifying sources/caches or publishing data.
+
+Args:
+- `--config configs/idaho.yml`
+- `--output PATH.json` (default: configured `reports_dir/data-audit.json`)
+
+Writes a private report and prints status/counts/path as JSON. Exit 1 means
+blocked; exit 0 means manual review is still required. Publication readiness is
+always false. Invalid configuration or output destinations return a CLI error.
+See `20_SOURCE_DATA_AUDIT.md` for report fields, source assumptions, cache
+comparison and safe output locations.
+
 ### `idwx dataset build`
 Build X/y datasets for targets.
 

@@ -43,6 +43,28 @@ app.add_typer(target_app, name="target")
 app.add_typer(feature_app, name="feature")
 
 
+@data_app.command("audit")
+def data_audit(
+    config: str = typer.Option("configs/idaho.yml", "--config"),
+    output: Path | None = typer.Option(None, "--output", help="Defaults to reports_dir/data-audit.json from the config."),  # noqa: B008 - Typer option default.
+) -> None:
+    """Audit raw sources without modifying caches; provenance still requires human review."""
+    from idwx.data_audit import audit_data, write_audit_report
+
+    cfg = load_config(config)
+    destination = output or cfg.reports_dir / "data-audit.json"
+    try:
+        report = audit_data(cfg, load_stations(cfg.stations_file))
+        write_audit_report(cfg, report, destination)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps({"audit_status": report["audit_status"], "publication_ready": False,
+                           "files": len(report["files"]), "blocking_issues": len(report["blocking_issues"]),
+                           "report": str(destination)}))
+    if report["audit_status"] == "blocked":
+        raise typer.Exit(code=1)
+
+
 def _modeling_dataset(cfg: Config, target: str, threshold: float, protocol: str | None,
                       *, season_year: int | None = None, issue_date: str | None = None,
                       require_context: bool = False) -> pd.DataFrame:

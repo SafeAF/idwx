@@ -12,11 +12,24 @@ This is seasonal / event forecasting for agriculture.
 
 ## Data location (local, not committed)
 
-Raw CSVs live on this machine:
+The configured raw CSV location is:
 
 `~/historical_weather_data-1980-2022/idaho/`
 
-This repo assumes you have ~50 years of daily or hourly station data for ~20 locations.
+That directory is currently absent in this workspace. Station metadata lists
+Twin Falls; real source availability and coverage remain unverified.
+
+Run the private [source audit](docs/20_SOURCE_DATA_AUDIT.md) before trusting
+historical results:
+
+```powershell
+.venv/Scripts/python.exe -m idwx data audit
+```
+
+It writes `reports_dir/data-audit.json`, reports missing/invalid inputs and
+compares existing daily caches with current aggregation. It does not modify
+sources/caches or certify provenance; even an exit code of zero requires
+manual review. The current workspace report is blocked by missing sources.
 
 ## Core principles
 

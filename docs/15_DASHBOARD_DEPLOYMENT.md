@@ -171,3 +171,8 @@ No screenshots or claims of browser-tested behavior are provided.
 The initial forecast audit and input leakage corrections are recorded in
 `16_FORECAST_CORRECTNESS_AUDIT.md`. Those synthetic regression checks do not
 establish forecast accuracy or calibration. No forecasts are published.
+
+The full suite now has 201 Python tests passing, one optional Nginx test
+skipped, and five frontend tests passing. The source-audit command and its
+blocked workspace report are documented in `20_SOURCE_DATA_AUDIT.md`. Reports
+contain private paths/metadata and must remain outside the publication root.

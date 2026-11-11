@@ -83,6 +83,16 @@ Actual station availability, units, reporting-day conventions, duplicates,
 summer freezes, and date ranges still require review against real source files.
 This prevents declaring Phase 1 complete against real data.
 
+`idwx data audit` now inventories raw sources, fingerprints files, reports
+parsing/offset/coverage findings, recomputes this contract's frost records and
+compares current daily caches. It is read-only with respect to sources/caches
+and never certifies provenance or publication readiness. See
+`20_SOURCE_DATA_AUDIT.md` for commands, manual review requirements and the
+blocked workspace result. Ingestion now also rejects invalid timestamps and
+explicit offsets, ambiguous station matches and duplicate headers; cache
+builds reject multiple source files mapping to one station rather than
+silently skipping/overwriting them.
+
 Synthetic regression tests cover threshold equality, multiple events, exact
 -2 C behavior, inclusive boundaries, leap-year coverage, absent/null/nonfinite
 days, quality flags, missing years, empty stations, unfinished seasons, July

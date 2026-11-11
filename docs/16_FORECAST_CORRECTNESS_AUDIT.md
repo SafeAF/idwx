@@ -72,6 +72,13 @@ coordinates, and adds explicit date representations and elapsed-day metrics.
 Protocol input version 2 records the policy/window and requires retraining
 earlier artifacts. No forecast publication gate is enabled.
 
+The read-only `data audit` command now provides source fingerprints, parsing
+diagnostics, fresh historical calculations and current daily-cache comparison;
+see `20_SOURCE_DATA_AUDIT.md`. It explicitly leaves source provenance, units,
+reporting conventions and historical data availability for manual review and
+does not set publication readiness. The workspace run is blocked by missing
+sources; no real-data or as-issued validation has been completed.
+
 ## Remaining blockers found in source
 
 | Area | Evidence and consequence | Required follow-up |
@@ -133,10 +140,11 @@ evidence of corrected preprocessing or readiness.
 .venv/Scripts/python.exe -m ruff check idwx/forecast_protocol.py tests/test_forecast_protocol.py
 .venv/Scripts/python.exe -m ruff check idwx/models/conformal.py idwx/models/rf.py idwx/models/__init__.py tests/test_calibration.py
 .venv/Scripts/python.exe -m ruff check idwx/forecast_dates.py tests/test_forecast_dates.py
+.venv/Scripts/python.exe -m ruff check idwx/data_audit.py idwx/io.py tests/test_data_audit.py
 node --test tests/web.test.mjs
 ```
 
-Verification after the date-policy follow-up: 169 Python tests passed,
+Verification after the source-audit follow-up: 201 Python tests passed,
 one optional live Nginx test skipped; five frontend tests passed. Targeted Ruff
 and `git diff --check` passed. Nine input regression cases cover missing calendar years,
 rolling counts, ambiguous histories, cache missingness, future-row construction,
@@ -152,6 +160,9 @@ and reporting. See the calibration contract for detail.
 The date-policy follow-up adds 37 cases for calendar/window constraints,
 conversion, actual-date consistency, elapsed-day metrics, paired baselines,
 input migration and CLI error handling.
+The source-audit follow-up adds 32 cases for raw inputs, fingerprints and
+historical review, cache agreement/staging, private report failures and CLI
+behavior. These checks continue to use synthetic fixtures.
 These are regression checks, not accuracy or calibration measurements.
 
 ## Infrastructure findings

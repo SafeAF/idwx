@@ -4,20 +4,26 @@ This document defines the **input assumptions**, the **canonical schema**, and t
 
 ## Local raw data root
 
-Raw CSVs live on this machine:
+The configured raw CSV location is:
 
 `~/historical_weather_data-1980-2022/idaho/`
 
-This directory is **not committed**.
+This directory is **not committed** and is currently absent in the implementation
+workspace. Real station availability and source conventions remain unverified.
 
 ## Supported input types
 
-The ingest layer must support:
+The original ingestion scope includes:
 
 - **Daily CSVs** (already aggregated)
 - **Hourly CSVs** (aggregated to daily by this repo)
 
-We do **not** assume consistent headers, units, or timestamp formats across stations.
+The implemented adapter currently supports ERA5-style hourly CSVs with an exact
+Celsius header and source times interpreted as UTC. General daily CSV parsing,
+alternate headers and Fahrenheit/inches/mph conversion are not implemented.
+Do not assume arbitrary source formats are normalized by the existing code.
+Use `idwx data audit` and a reviewed adapter/normalization step for new sources;
+see `20_SOURCE_DATA_AUDIT.md`.
 
 ## Station metadata (required)
 
@@ -76,11 +82,12 @@ If raw input is hourly (or sub-hourly):
 - `tmin_c` = minimum temperature of the day
 - `tmax_c` = maximum temperature of the day
 - `tmean_c` = arithmetic mean of all valid readings that day
-- `precip_mm` = sum of precip readings that day (if present)
+- `precip_mm` currently uses a cumulative/incremental heuristic when present;
+  accumulation/reset conventions require source review before using it
 
 Coverage requirement:
 
-- to compute Tmin/Tmax/Tmean for a day, require at least **18 hourly readings**
+- to compute Tmin/Tmax/Tmean for a day, require at least **18 distinct UTC hours with finite temperatures**
   - configurable in YAML (default 18)
 - if coverage is insufficient, the daily row is still present but the affected fields are `null`
 
@@ -106,8 +113,9 @@ All canonical values must be stored as:
 - relative humidity: percent (0–100)
 - pressure: hPa
 
-Raw data may be Fahrenheit/inches/mph.
-Conversion must happen during ingest.
+Raw data may be Fahrenheit/inches/mph. Such inputs require an explicit reviewed
+conversion adapter; the current Celsius-only adapter does not perform this
+general normalization.
 
 ## Timezone rules
 
@@ -117,9 +125,12 @@ Conversion must happen during ingest.
 
 ## Output artifacts
 
-After ingest, the repo writes:
+The implemented hourly adapter writes:
 
-- `data_cache/canonical/<station_id>.parquet`
 - `data_cache/daily/<station_id>.parquet`
 
-These are local artifacts and must be gitignored.
+The separately proposed `canonical/` raw-observation cache is not currently
+written. Daily caches are local artifacts and must be gitignored. Source
+collisions fail before writing; parsing/serialization is staged before replacing
+old caches, with atomic replacement per station. See the source audit document
+for the remaining multi-file commit/consolidation limitations.
