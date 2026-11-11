@@ -1,4 +1,4 @@
-import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease } from './format.js';
+import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument } from './format.js';
 import { renderHistory } from './charts.js';
 
 const $ = id => document.getElementById(id);
@@ -139,7 +139,7 @@ async function selectStation(id, params = new URLSearchParams(location.search)) 
     if (!entry) throw new Error('Station not found in this release.');
     const doc = validateRelease(await fetchJSON(releaseURL(entry.url, base, state.manifest.release_id), controller.signal), state.manifest);
     if (request !== state.request) return;
-    if (doc.station.station_id !== id || !Array.isArray(doc.annual) || !doc.annual.length || !doc.thresholds_c.length) throw new Error('Station data is invalid.');
+    validateStationDocument(doc, id);
     state.document = doc;
     const threshold = params.has('threshold') ? Number(params.get('threshold')) : state.threshold;
     state.threshold = doc.thresholds_c.includes(threshold) ? threshold : doc.thresholds_c[0];
@@ -175,7 +175,11 @@ $('threshold').addEventListener('change', () => { state.threshold = Number($('th
 $('year').addEventListener('change', () => { state.year = Number($('year').value); render(); });
 $('units').addEventListener('change', event => { state.unit = event.target.value; render(); });
 $('retry').addEventListener('click', load);
-window.addEventListener('popstate', () => { if (state.index) selectStation(new URLSearchParams(location.search).get('station') || state.index.stations[0].station.station_id); });
+window.addEventListener('popstate', () => {
+  if (!state.index) return;
+  const id = new URLSearchParams(location.search).get('station');
+  selectStation(state.index.stations.some(entry => entry.station.station_id === id) ? id : state.index.stations[0].station.station_id);
+});
 $('download').addEventListener('click', () => {
   const csv = historyCSV(state.document, state.document.annual.filter(r => r.threshold_c === state.threshold));
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

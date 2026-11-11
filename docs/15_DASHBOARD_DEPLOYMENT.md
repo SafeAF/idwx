@@ -163,10 +163,29 @@ Browser preview was attempted but its access host was unavailable in the
 implementation session. A native Firefox fallback on November 11, 2026 was
 stopped by the computer-use tool because URL policy enforcement is unsupported
 for this Windows browser. The companion page supplied no document session.
-Desktop/mobile appearance, interactive controls,
-keyboard navigation, chart/table agreement in the rendered page, downloads,
-and failed-request recovery therefore still need live browser verification.
-No screenshots or claims of browser-tested behavior are provided.
+The completion pass rechecked browser inventory and the access host remained
+unavailable. Desktop/mobile appearance, real browser keyboard behavior and
+native download behavior still need live browser verification. No screenshots
+or claims of browser-tested behavior are provided.
+
+DOM integration tests now execute the actual dashboard modules against
+exported synthetic fixtures using jsdom. Seventeen frontend tests cover URL
+restoration/normalization, controls and units, all data states, chart/table/CSV
+agreement, malformed/mixed releases, failed requests and recovery, late-response
+races, semantic controls and focus targets. These tests do not render layout
+or replace desktop/mobile browser checks. Install test-only dependencies with
+the pinned pnpm version (Node 24.15+ in the 24 series, or Node 26+):
+
+```powershell
+npm install --global pnpm@11.25.0
+pnpm --dir web install --frozen-lockfile --ignore-scripts
+pnpm --dir web test
+```
+
+Set `IDWX_PYTHON` to the Python executable if it is not in the checkout's
+standard `.venv`. The test fixture is explicitly synthetic and is cleaned up.
+jsdom/pnpm are development dependencies and are excluded from exports/wheels;
+the production website remains buildless.
 
 The initial forecast audit and input leakage corrections are recorded in
 `16_FORECAST_CORRECTNESS_AUDIT.md`. Those synthetic regression checks do not

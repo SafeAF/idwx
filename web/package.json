@@ -1,1 +1,15 @@
-{"private":true,"type":"module"}
+{
+  "name": "idwx-dashboard-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules --test ../tests/web.test.mjs tests/*.test.mjs"
+  },
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "devDependencies": {
+    "jsdom": "31.0.0"
+  }
+}

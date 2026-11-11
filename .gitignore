@@ -4,6 +4,7 @@ __pycache__/
 .tmp/
 .pytest_cache/
 .ruff_cache/
+node_modules/
 
 # local artifacts
 /data_cache/

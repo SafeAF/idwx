@@ -22,8 +22,8 @@ export function renderHistory(container, records, summaries, selectedYear) {
   }
   const width = 1000, height = 350, left = 52, right = 26, top = 22, bottom = 38;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
-  const first = Math.min(...observed.map(r => r.season_year), selectedYear);
-  const last = Math.max(...observed.map(r => r.season_year), selectedYear);
+  const first = Math.min(...records.map(r => r.season_year), selectedYear);
+  const last = Math.max(...records.map(r => r.season_year), selectedYear);
   const x = year => left + (first === last ? .5 : (year - first) / (last - first)) * plotWidth;
   const y = day => top + ((day - 1) / 365) * plotHeight;
   const svg = element('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-labelledby': 'chart-title chart-desc' });

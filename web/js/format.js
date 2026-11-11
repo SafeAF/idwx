@@ -73,3 +73,56 @@ export function validateRelease(document, manifest) {
   }
   return document;
 }
+
+export function validateStationDocument(doc, stationID) {
+  const invalid = () => { throw new Error('Station data is invalid or incomplete.'); };
+  const count = value => Number.isInteger(value) && value >= 0;
+  const nullableNumber = value => value === null || Number.isFinite(value);
+  const nullableDate = value => value === null || !!dateParts(value);
+  if (!doc?.station || doc.station.station_id !== stationID || typeof doc.station.name !== 'string' ||
+      typeof doc.station.timezone !== 'string' || typeof doc.methodology !== 'string' ||
+      !doc.source_coverage || !dateParts(doc.source_coverage.first_date) || !dateParts(doc.source_coverage.last_date) ||
+      !nullableDate(doc.source_coverage.last_valid_minimum_date) ||
+      !Array.isArray(doc.thresholds_c) || !doc.thresholds_c.length || !doc.thresholds_c.every(Number.isFinite) ||
+      new Set(doc.thresholds_c).size !== doc.thresholds_c.length ||
+      !Array.isArray(doc.annual) || !doc.annual.length || !Array.isArray(doc.summaries)) invalid();
+  const keys = new Set(), years = new Set();
+  for (const row of doc.annual) {
+    if (!Number.isInteger(row?.season_year) || !doc.thresholds_c.includes(row.threshold_c)) invalid();
+    const key = `${row.season_year}/${row.threshold_c}`;
+    if (keys.has(key)) invalid();
+    keys.add(key); years.add(row.season_year);
+    for (const name of EVENT_NAMES) {
+      const event = row[name];
+      if (!event || !['observed', 'no_event_in_complete_window', 'incomplete_window', 'insufficient_data'].includes(event.status) ||
+          !nullableDate(event.date) || !nullableDate(event.candidate_date) || !nullableNumber(event.tmin_c) ||
+          !nullableNumber(event.candidate_tmin_c) || !dateParts(event.window_start) || !dateParts(event.window_end) ||
+          !count(event.valid_days) || !count(event.missing_days) || !count(event.expected_days) || !event.expected_days ||
+          event.valid_days + event.missing_days !== event.expected_days || !Number.isFinite(event.coverage_fraction) ||
+          Math.abs(event.coverage_fraction - event.valid_days / event.expected_days) > 1e-12 ||
+          (event.status === 'observed' ? !event.date || !Number.isFinite(event.tmin_c) || event.missing_days !== 0
+            : event.date !== null || event.tmin_c !== null)) invalid();
+    }
+    const interval = row.interval;
+    if (!interval || !Object.hasOwn(STATUSES, interval.status) || !nullableNumber(interval.date_difference_days) ||
+        !(interval.frost_free_days === null || count(interval.frost_free_days)) ||
+        typeof interval.summer_freeze_observed !== 'boolean') invalid();
+  }
+  if (keys.size !== years.size * doc.thresholds_c.length) invalid();
+  for (const threshold of doc.thresholds_c) {
+    const summaries = doc.summaries.filter(item => item.threshold_c === threshold);
+    if (summaries.length !== 1) invalid();
+    for (const name of EVENT_NAMES) {
+      const summary = summaries[0][name];
+      if (!summary || !['available', 'insufficient_history'].includes(summary.status) ||
+          !count(summary.valid_year_count) || !count(summary.minimum_valid_years) || !summary.minimum_valid_years ||
+          !Number.isInteger(summary.baseline_period?.start_year) || !Number.isInteger(summary.baseline_period?.end_year)) invalid();
+      for (const key of ['p10', 'p50', 'p90']) {
+        const point = summary[key];
+        if (summary.status === 'available' ? !point || !Number.isInteger(point.calendar_day) ||
+            calendarDay(`2000-${point.month_day}`) !== point.calendar_day : point !== null) invalid();
+      }
+    }
+  }
+  return doc;
+}
