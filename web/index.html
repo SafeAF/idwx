@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore historical Idaho freeze dates, seasonal coverage, and the range of a typical growing season.">
+  <title>Idaho Frost Almanac · IDWX</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to frost history</a>
+  <header class="site-header wrap">
+    <a class="brand" href="./" aria-label="IDWX Frost Almanac home"><span class="brand-mark" aria-hidden="true">✳</span><span>IDWX <span class="brand-divider">/</span> <span class="brand-name">Frost Almanac</span></span></a>
+    <a href="#methodology" class="header-link">How to read the dates <span aria-hidden="true">↗</span></a>
+  </header>
+  <main id="main" class="wrap">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">Idaho · Historical growing seasons</p>
+      <h1 id="page-title">Every season has<br>a little history.</h1>
+      <p class="intro-copy">Explore the last freeze of spring, the first freeze of fall, and the days in between. A local record to help put your growing season in perspective.</p>
+    </section>
+    <div id="notice" class="notice" hidden></div>
+    <div id="status" class="status" role="status" aria-live="polite">Loading the historical archive…</div>
+    <button id="retry" type="button" class="button" hidden>Try loading again</button>
+    <section class="filters" aria-label="Explore the archive">
+      <label>Station<select id="station" disabled><option>Loading stations…</option></select></label>
+      <label>Freeze threshold<select id="threshold" disabled><option>—</option></select></label>
+      <label>Season year<select id="year" disabled><option>—</option></select></label>
+      <fieldset id="units" disabled><legend>Temperature units</legend><div class="unit-switch"><label><input type="radio" name="unit" value="c" checked><span>°C</span></label><label><input type="radio" name="unit" value="f"><span>°F</span></label></div></fieldset>
+    </section>
+    <div id="dashboard" hidden>
+      <section class="station-heading" aria-labelledby="station-title"><div><p class="eyebrow">The local record</p><h2 id="station-title"></h2><p id="station-meta" class="muted"></p></div><span id="year-badge" class="pill"></span></section>
+      <section id="cards" class="cards" aria-label="Selected season"></section>
+      <section class="panel history" aria-labelledby="history-title">
+        <div class="section-heading"><div><p class="eyebrow">Patterns across the years</p><h2 id="history-title">Freeze-date history</h2></div><button id="download" class="button" type="button">Download this history <span aria-hidden="true">↓</span></button></div>
+        <p class="muted">Confirmed dates by year. Shaded bands show the historical P10–P90 range; dashed lines mark the typical date (P50).</p>
+        <div class="legend"><span><i class="dot spring"></i>Last spring freeze</span><span><i class="dot fall"></i>First fall freeze</span></div>
+        <div id="chart" class="chart"></div>
+        <p id="history-caption" class="small muted"></p>
+        <details class="history-details"><summary>View the accessible history table</summary><div class="table-scroll" tabindex="0" role="region" aria-label="Annual freeze history"><table><caption id="table-caption"></caption><thead><tr><th scope="col">Year</th><th scope="col">Last spring freeze</th><th scope="col">First fall freeze</th><th scope="col">Verified frost-free days</th></tr></thead><tbody id="history-rows"></tbody></table></div></details>
+      </section>
+      <section class="panel" aria-labelledby="details-title"><div class="section-heading"><div><p class="eyebrow">Behind the dates</p><h2 id="details-title">Season details</h2></div></div><div class="table-scroll" tabindex="0" role="region" aria-label="Selected season coverage"><table><caption id="detail-caption"></caption><thead><tr><th scope="col">Window</th><th scope="col">Result</th><th scope="col">Event minimum</th><th scope="col">Daily coverage</th><th scope="col">Provisional candidate</th></tr></thead><tbody id="detail-rows"></tbody></table></div><p id="interval-note" class="small muted"></p></section>
+      <section id="methodology" class="methodology" aria-labelledby="method-title"><div><p class="eyebrow">A note from the field</p><h2 id="method-title">History offers context.<br>It doesn’t promise a date.</h2></div><div class="method-copy"><p id="method-text"></p><p>Spring P90 is a later last-freeze date. Fall P10 is an earlier first-freeze date. These historical ranges describe years with confirmed events; they are not current-season forecasts.</p><p id="summary-note"></p><dl id="freshness"></dl><a id="full-download" class="text-link" href="#" download="frost-history.csv">Download all stations and thresholds (CSV) ↓</a></div></section>
+    </div>
+    <noscript><p class="notice">JavaScript is needed to explore this archive. You can also read the generated JSON and CSV files under <code>data/</code>.</p></noscript>
+  </main>
+  <footer class="wrap"><span>IDWX <span class="brand-divider">/</span> Idaho Frost Almanac</span><span>Historical perspective. Local conditions matter.</span></footer>
+</body>
+</html>

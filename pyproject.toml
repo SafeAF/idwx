@@ -24,6 +24,13 @@ idwx = "idwx.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["idwx"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"web/index.html" = "idwx/web_assets/index.html"
+"web/css/styles.css" = "idwx/web_assets/css/styles.css"
+"web/js/app.js" = "idwx/web_assets/js/app.js"
+"web/js/charts.js" = "idwx/web_assets/js/charts.js"
+"web/js/format.js" = "idwx/web_assets/js/format.js"
+
 [tool.uv]
 dev-dependencies = [
   "pytest>=8.0",

@@ -21,6 +21,7 @@ from idwx.frost import frost_rows, validated_daily
 from idwx.history import summarize_events
 
 SCHEMA_VERSION = "1.0.0"
+WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/format.js")
 EVENT_NAMES = ("last_spring_frost", "first_fall_frost")
 NOTICE = (
     "Temperature-based freeze dates are a proxy for frost risk. Surface frost and crop damage "
@@ -208,6 +209,20 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
             os.replace(staged, release_dir)
     # The manifest changes only after the complete immutable release exists.
     with tempfile.TemporaryDirectory(prefix=".manifest-", dir=data_dir) as stage:
+        # Assets are allowlisted: generated data, source files, and private files
+        # can never be copied into a publication by directory traversal.
+        assets = Path(__file__).resolve().parent / "web_assets"
+        if not (assets / "index.html").is_file():
+            assets = Path(__file__).resolve().parent.parent / "web"
+        for name in WEB_ASSETS:
+            destination = Path(output) / name
+            content = (assets / name).read_bytes()
+            if destination.is_file() and destination.read_bytes() == content:
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary_asset = Path(stage) / "asset"
+            temporary_asset.write_bytes(content)
+            os.replace(temporary_asset, destination)
         temporary_manifest = Path(stage) / "manifest.json"
         temporary_manifest.write_bytes(_json(manifest))
         os.replace(temporary_manifest, data_dir / "manifest.json")

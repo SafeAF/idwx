@@ -1,8 +1,9 @@
 # Static historical data contract, version 1.0.0
 
-This implements historical summaries from Phase 2 and the data portion of
+This implements historical summaries from Phase 2 and the export contract of
 Phase 3 in `12_FROST_STATIC_WEBSITE_PLAN.md`. It does not publish model
-predictions. The dashboard assets and Nginx package remain subsequent steps.
+predictions. The exporter now also installs the dashboard assets; see
+`15_DASHBOARD_DEPLOYMENT.md` for preview, deployment, and verification.
 
 ## Build
 
@@ -45,6 +46,11 @@ The generated timestamp describes export time, never observation freshness.
 
 ```text
 <output>/
+  index.html
+  css/styles.css
+  js/app.js
+  js/charts.js
+  js/format.js
   data/manifest.json
   data/<release-id>/stations.json
   data/<release-id>/stations/<station-id>.json
@@ -154,7 +160,12 @@ Only then is the manifest replaced atomically. Failed refreshes preserve the
 previous manifest; a failed final switch may leave a complete unreferenced
 release. Existing release bytes and file inventory must match exactly before
 reuse. Previous releases are retained automatically for open views and rollback.
-The exporter is intended for one batch writer at a time.
+The exporter is intended for one batch writer at a time. Frontend assets are
+copied from a fixed allowlist (also bundled into installed Python wheels),
+with atomic replacement per file. For application-code updates, export into
+a separate staging directory and switch the server document root only after
+verification. The data manifest switch does not make a multi-file asset
+update atomic.
 
 This is a local filesystem publication guarantee. Deployment to Nginx must
 likewise upload complete versioned data before switching the remote manifest.

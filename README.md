@@ -70,8 +70,20 @@ Without local weather data, generate explicitly labeled synthetic examples:
 uv run idwx export-web --demo --output .tmp/demo-web
 ```
 
-See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) for release layout,
-summary semantics, and publication behavior. This step exports data only;
-dashboard HTML/CSS/JavaScript, deployment, and forecast validation remain
-subsequent implementation steps.
+The export includes the complete buildless dashboard: station/threshold/year
+controls, unit switching, confirmed dates and historical ranges, coverage,
+an accessible history table, and CSV downloads. Open it through an HTTP server:
+
+```powershell
+uv run python -m http.server 8765 --bind 127.0.0.1 --directory .tmp/demo-web
+```
+
+Visit `http://127.0.0.1:8765/`. The demo is clearly labeled synthetic.
+Selections are saved in the URL for sharing. No external APIs, fonts, or
+frontend build tools are required in production.
+
+See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) and
+[deployment and verification instructions](docs/15_DASHBOARD_DEPLOYMENT.md).
+The Nginx configuration is in `deploy/nginx.conf`. Real-source auditing,
+production browser/TLS checks, and forecast validation remain outstanding.
 
