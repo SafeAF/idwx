@@ -31,6 +31,27 @@ synthetic mode remains explicitly labeled. No model predictions are exported.
 These changes do **not** make the remaining forecast pipeline safe to publish.
 In particular, carrying a WSI lag still carries the normalization problem below.
 
+## Evaluation and artifact corrections implemented
+
+The follow-up implementation separates model artifacts and evaluation reports
+by exact threshold. Version 2 artifacts record threshold and configuration/
+dataset/schema identity; prediction checks both the requested model and
+climatology before loading. Configuration hashing now includes station windows
+and station metadata bytes. Unique automatic run IDs, no-overwrite explicit
+IDs, and an atomically installed completion marker prevent run collisions and
+selection of interrupted saves. Legacy models require retraining.
+
+Backtests retain skipped and invalid folds with reasons instead of crashing on
+empty results or silently losing missing years. Reports include input training
+span, sample counts, available calibration counts and mean interval width.
+The CLI calculates climatology regardless of requested model order and compares
+MAE on identical successful station-years. Missing scores serialize as JSON
+null. See `06_EVALUATION.md` for statuses/denominators and `07_CLI_SPEC.md` for
+artifact layout and compatibility checks.
+
+These are research safeguards. No issue-date protocol, validated preprocessing
+version, forecast promotion gate or forecast export has been added.
+
 ## Remaining blockers found in source
 
 | Area | Evidence and consequence | Required follow-up |
@@ -40,8 +61,8 @@ In particular, carrying a WSI lag still carries the normalization problem below.
 | Forecast context | `build_future_row` still selects latest dataset year + 1. `predict` has no explicit forecast-year or issue-date arguments and does not report the last observation date or training period. Missing future weather is now honest, but backtests still use observed same-year weather. | Require explicit season year/issue date and compatible model artifacts. Apply identical availability rules to backtesting and prediction. A dataset ending in 2022 does not support an automatic current-year forecast. |
 | Calibration and labeling | RF holds out the last 20% of training rows, but `residual_quantile` uses an interpolated residual quantile without a finite-sample rank correction. RF includes a training-residual fallback and a fixed-width prediction fallback. Its symmetric bounds are returned as `p10`/`p90`. | Define a chronological calibration protocol and minimum calibration sample. Reject unsupported intervals instead of substituting training residuals or arbitrary widths. Use interval-bound labels unless tail quantiles are established. Evaluate empirical coverage under temporal change; chronological splitting alone establishes no calibration guarantee. |
 | Date representation | Forecast datasets use actual-year `value_doy`; website history uses the common leap-year calendar. Trend quantiles can cross, and predictions are not constrained to valid target-window dates. | Choose and version a forecast calendar contract. Test leap dates, conversion, ordering and window bounds; evaluate any correction or clipping rather than silently applying it. |
-| Model identity | Registry paths and `latest_model_dir` distinguish target/station/model but not threshold. Saved metadata does not record the selected threshold. `hash_config` omits `station_windows`, and run names have second precision. | Include threshold, protocol, effective windows, timezone, schema and preprocessing versions in artifact identity and verify compatibility before prediction. Prevent run collisions. |
-| Evaluation/reporting | Walk-forward training is limited to years before the test year, but upstream feature leakage remains. Metrics omit interval width, valid counts and calibration sample context. Empty backtests can fail while building reports. CLI baseline comparison depends on requesting climatology before other models. | Re-run both frost targets with clean fold inputs, paired climatology folds, sufficient training/calibration history, coverage and width, bias/error, sample counts and uncertainty. Make empty/insufficient folds explicit. Compare models and baseline on identical eligible station-years. |
+| Model identity | Threshold/configuration/dataset/schema checks, station metadata hashing and collision prevention are implemented. Protocol and feature/preprocessing provenance are still unversioned; a newly saved artifact can still originate from stale caches. | Version issue-date protocols and preprocessing, reject stale derived inputs, and verify that metadata records the effective forecast context. The registry format version is not a validation status. |
+| Evaluation/reporting | Empty/skipped folds, counts, training spans, calibration counts, width and paired climatology comparisons are implemented. Upstream feature leakage, real-data results and calibration validation remain unresolved. | Re-run both frost targets with clean fold inputs and sufficient training/calibration history. Review paired error, bias, interval coverage/width, sample counts and uncertainty against predetermined promotion criteria. |
 
 ## Forecast publication requirements
 
@@ -86,14 +107,19 @@ evidence of corrected preprocessing or readiness.
 ```powershell
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/python.exe -m ruff check idwx/features.py idwx/datasets.py idwx/models/rf.py tests/test_forecast_inputs.py
+.venv/Scripts/python.exe -m ruff check idwx/eval.py idwx/registry.py idwx/cli.py tests/test_evaluation.py tests/test_registry.py
 node --test tests/web.test.mjs
 ```
 
-Verification: 47 Python tests passed, one optional live Nginx test skipped;
-five frontend tests passed. Nine new Python cases cover missing calendar years,
+Verification after the evaluation/registry follow-up: 73 Python tests passed,
+one optional live Nginx test skipped; five frontend tests passed. Targeted Ruff
+and `git diff --check` passed. Nine input regression cases cover missing calendar years,
 rolling counts, ambiguous histories, cache missingness, future-row construction,
-and training-only RF preprocessing/refitting. These are regression checks,
-not accuracy or calibration measurements.
+and training-only RF preprocessing/refitting. Another 26 cases cover empty and
+skipped evaluations, invalid intervals, paired baseline scoring, CLI ordering,
+strict JSON, threshold isolation, artifact compatibility and run completion/
+collision behavior, including a synthetic CLI train/predict round trip.
+These are regression checks, not accuracy or calibration measurements.
 
 ## Infrastructure findings
 

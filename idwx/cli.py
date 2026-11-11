@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -10,7 +11,12 @@ import typer
 
 from idwx.config import load_config, load_stations
 from idwx.datasets import build_all_datasets, build_future_row, load_or_build_dataset
-from idwx.eval import walk_forward_backtest, write_eval_reports
+from idwx.eval import (
+    pair_baseline,
+    summarize_backtest,
+    walk_forward_backtest,
+    write_eval_reports,
+)
 from idwx.features import build_features_cache
 from idwx.io import build_data_cache
 from idwx.models import create_model
@@ -31,7 +37,7 @@ app.add_typer(feature_app, name="feature")
 @app.command("export-web")
 def export_web(
     config: str = typer.Option("configs/idaho.yml", "--config"),
-    output: Path = typer.Option(Path("web"), "--output"),
+    output: Path = typer.Option(Path("web"), "--output"),  # noqa: B008 - Typer declares CLI options in defaults.
     baseline_start: int | None = typer.Option(None, "--baseline-start"),
     baseline_end: int | None = typer.Option(None, "--baseline-end"),
     min_history_years: int = typer.Option(10, "--min-history-years", min=1),
@@ -73,7 +79,7 @@ def dataset_build(
 ) -> None:
     cfg = load_config(config)
     ds = build_all_datasets(cfg, target_name=target, threshold=threshold)
-    typer.echo(json.dumps({"rows": int(len(ds)), "target": target, "threshold": threshold}))
+    typer.echo(json.dumps({"rows": len(ds), "target": target, "threshold": threshold}))
 
 
 @target_app.command("build")
@@ -129,11 +135,11 @@ def train(
             model = create_model(model_name, cfg.models)
             try:
                 model.fit(X, y, meta=sdf[["station_id", "season_year"]], config=cfg.models)
-            except Exception as exc:
+            except ValueError as exc:
                 skipped.append({"station_id": sid, "model": model_name, "reason": str(exc)})
                 continue
             train_metrics = {
-                "n_rows": int(len(sdf)),
+                "n_rows": len(sdf),
                 "n_target_non_null": int(sdf["target_doy"].notna().sum()),
                 "model_metadata": getattr(model, "metadata", {}),
             }
@@ -144,6 +150,7 @@ def train(
                 station=sid,
                 model_name=model_name,
                 dataset=sdf,
+                threshold_c=threshold,
                 metrics=train_metrics,
             )
             artifacts.append(str(out))
@@ -161,16 +168,25 @@ def evaluate(
     cfg = load_config(config)
     ds = load_or_build_dataset(cfg, target_name=target, threshold=threshold)
     if ds.empty:
-        raise typer.Exit("No dataset rows available for evaluation")
+        raise typer.BadParameter("No dataset rows available for evaluation")
 
-    model_names = [m.strip() for m in models.split(",") if m.strip()]
-
-    baseline_summary = None
+    model_names = list(dict.fromkeys(m.strip() for m in models.split(",") if m.strip()))
+    if not model_names:
+        raise typer.BadParameter("Request at least one model")
+    try:
+        for model_name in model_names:
+            create_model(model_name, cfg.models)  # Reject unknown models even when there are no eligible folds.
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    baseline_yearly, _, _ = walk_forward_backtest(ds, model_name="climatology", cfg=cfg)
     outputs = []
     for model_name in model_names:
-        yearly, summary, per_station = walk_forward_backtest(ds, model_name=model_name, cfg=cfg)
         if model_name == "climatology":
-            baseline_summary = summary
+            yearly = baseline_yearly
+        else:
+            yearly, _, _ = walk_forward_backtest(ds, model_name=model_name, cfg=cfg)
+        yearly = pair_baseline(yearly, baseline_yearly)
+        summary, per_station = summarize_backtest(yearly)
         report_dir = write_eval_reports(
             yearly,
             summary,
@@ -178,11 +194,14 @@ def evaluate(
             config=cfg,
             target=target,
             model_name=model_name,
-            baseline_summary=baseline_summary if model_name != "climatology" else None,
+            threshold_c=threshold,
         )
-        outputs.append({"model": model_name, "report_dir": str(report_dir), "summary": summary})
+        outputs.append({"model": model_name, "report_dir": str(report_dir),
+                        "summary": {key: None if isinstance(value, float) and not math.isfinite(value) else value
+                                    for key, value in summary.items()}})
 
-    typer.echo(json.dumps({"target": target, "outputs": outputs}, indent=2))
+    typer.echo(json.dumps({"target": target, "threshold_c": threshold,
+                           "validation_status": "unvalidated_research", "outputs": outputs}, indent=2, allow_nan=False))
 
 
 @app.command("predict")
@@ -202,7 +221,13 @@ def predict(
     if hist.empty:
         raise typer.Exit(f"No dataset history for station: {sid}")
 
-    model_dir = latest_model_dir(cfg, target=target, station=sid, model_name=model)
+    try:
+        model_dir = latest_model_dir(cfg, target=target, station=sid, model_name=model,
+                                    threshold_c=threshold, dataset=hist)
+        baseline_dir = latest_model_dir(cfg, target=target, station=sid, model_name="climatology",
+                                       threshold_c=threshold, dataset=hist)
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     if model == "climatology":
         from idwx.models.climatology import ClimatologyModel
@@ -222,19 +247,19 @@ def predict(
     future = build_future_row(hist)
     pred = mdl.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
 
-    baseline_dir = latest_model_dir(cfg, target=target, station=sid, model_name="climatology")
     from idwx.models.climatology import ClimatologyModel
 
     baseline_model = ClimatologyModel.load(baseline_dir)
     baseline = baseline_model.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
 
     out = {
-        "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "station_id": sid,
         "target": target,
         "threshold_c": threshold,
         "season_year": int(future.iloc[0]["season_year"]),
         "model": model,
+        "validation_status": "unvalidated_research",
         "prediction": {"p10": float(pred["p10"]), "p50": float(pred["p50"]), "p90": float(pred["p90"])},
         "baseline_climatology": {
             "p10": float(baseline["p10"]),

@@ -36,10 +36,11 @@ Aggregate errors across all folds.
 Write:
 
 reports/<target>/<model_name>/
-  summary.csv
-  per_station.csv
-  yearly_errors.csv
-  plots/
+  threshold_0p0/
+    summary.csv
+    per_station.csv
+    yearly_errors.csv
+    plots/
 
 Plots:
 - predicted vs actual DOY scatter
@@ -54,3 +55,51 @@ Every report must include:
 - delta (model - baseline)
 
 If the model does not beat baseline, it is not promoted.
+
+## Implemented research reporting
+
+Reports are separated by threshold: `threshold_0p0` for 0 C,
+`threshold_m2p0` for -2 C, or `threshold_none` for no threshold. Different
+threshold runs do not overwrite each other. Re-running the same target/model/
+threshold replaces that report. `plots/` is reserved; plots are not generated.
+
+`yearly_errors.csv` now contains a row for every configured test year at each
+station in the input dataset, including skipped folds. `status` identifies:
+
+- `evaluated`: finite target and finite, ordered prediction bounds.
+- `missing_test_year`: no dataset row exists for the test year.
+- `missing_actual`: the target is missing or nonfinite.
+- `insufficient_training`: too few earlier years with finite targets.
+- `model_unavailable`: fitting or prediction raised a `ValueError`; `reason`
+  retains its explanation, including model-specific sample requirements.
+- `invalid_prediction`: nonfinite or crossed prediction bounds. These are
+  excluded rather than repaired silently.
+
+Malformed prediction schemas fail the evaluation. Duplicate station-years,
+missing keys, noninteger years, reversed year bounds and nonpositive training
+minimums are rejected. Training uses only finite targets from years strictly
+before the test year. Fold rows include that input training span, valid training
+year count, and the model's calibration row count when provided. For RF this
+span includes both its internal fitting and calibration partitions.
+
+Summary and per-station tables contain `n_folds`, `n_evaluated`, `n_skipped`,
+MAE, RMSE, signed bias, coverage and mean interval width. Only `evaluated`
+folds enter those metrics; coverage is not a percentage of all configured
+years. Read the counts and skipped rows alongside scores. With no evaluable
+folds, status is `insufficient_evaluation`, metrics are blank in CSV and null
+in CLI JSON. Empty input tables with the required columns also produce
+well-formed empty reports through the Python evaluation API.
+
+The CLI always evaluates climatology, even for `--models rf` or when it is
+listed last. Baseline comparison joins successful folds by station/year and
+verifies matching actual targets. The yearly report includes
+`baseline_pred_p50`; `n_paired`, `paired_model_mae`, `baseline_mae`, and
+`delta_mae` are calculated on exactly the common successful folds.
+`delta_mae = paired_model_mae - baseline_mae`; the overall `mae` can use a
+larger set and must not be substituted in that subtraction. Baseline report
+files are written when climatology is explicitly requested; its paired scores
+are included for each requested model regardless.
+
+All modeling output remains `unvalidated_research`. These reporting corrections
+do not resolve same-season feature leakage, full-history WSI normalization,
+or calibration. See [the forecast audit](16_FORECAST_CORRECTNESS_AUDIT.md).
