@@ -12,7 +12,7 @@ from idwx.targets import build_targets_for_station
 def _slope_vs_day(sub: pd.DataFrame, value_col: str) -> float:
     if sub.empty or sub[value_col].notna().sum() < 3:
         return np.nan
-    x = sub["date"].dt.dayofyear.to_numpy(dtype=float)
+    x = sub["date"].dt.day_of_year.to_numpy(dtype=float)
     y = sub[value_col].to_numpy(dtype=float)
     mask = np.isfinite(x) & np.isfinite(y)
     if mask.sum() < 3:
@@ -38,12 +38,32 @@ def _target_series(targets: pd.DataFrame, target_name: str, threshold: float | N
 
 def add_target_lags(features_df: pd.DataFrame, target_values: pd.DataFrame, target_col: str) -> pd.DataFrame:
     out = features_df.copy()
-    y = target_values[["season_year", target_col]].drop_duplicates().sort_values("season_year")
-    out = out.merge(y, on="season_year", how="left")
-    out["target_lag1"] = out[target_col].shift(1)
-    out["target_roll3"] = out[target_col].shift(1).rolling(3, min_periods=2).mean()
-    out["target_roll5"] = out[target_col].shift(1).rolling(5, min_periods=3).mean()
-    return out.drop(columns=[target_col])
+    y = target_values.set_index("season_year")[target_col]
+    stats = prior_target_statistics(y, out["season_year"])
+    for col in stats:
+        out[col] = out["season_year"].map(stats[col])
+    return out
+
+
+def prior_target_statistics(values: pd.Series, years: pd.Series) -> pd.DataFrame:
+    """Use calendar years, retaining gaps rather than shifting available rows."""
+    if values.index.has_duplicates:
+        raise ValueError("Target history must have one value per season year")
+    if years.empty:
+        return pd.DataFrame(columns=["target_lag1", "target_roll3", "target_roll5"])
+    bounds = [*values.index, *years]
+    calendar = pd.RangeIndex(int(min(bounds)), int(max(bounds)) + 1, name="season_year")
+    previous = values.reindex(calendar).shift(1)
+    return pd.DataFrame({
+        "target_lag1": previous,
+        "target_roll3": previous.rolling(3, min_periods=2).mean(),
+        "target_roll5": previous.rolling(5, min_periods=3).mean(),
+    }).reindex(years)
+
+
+def calendar_lag(values: pd.Series, years: pd.Series) -> pd.Series:
+    """Look up exactly the preceding year, leaving absent years missing."""
+    return years.map(values.rename(index=lambda year: year + 1))
 
 
 def build_yearly_features(
@@ -66,7 +86,7 @@ def build_yearly_features(
     for y in years:
         row = {"station_id": station_id, "season_year": int(y), "year_index": int(y)}
 
-        elev = pd.to_numeric(df.get("elevation_m", np.nan), errors="coerce").dropna()
+        elev = pd.to_numeric(df.get("elevation_m", pd.Series(dtype=float)), errors="coerce").dropna()
         row["elevation_m"] = float(elev.iloc[0]) if not elev.empty else np.nan
 
         # First-fall oriented features.
@@ -89,7 +109,7 @@ def build_yearly_features(
 
         jan_to_dec = df[df["date"].dt.year == y]
         hit_10 = jan_to_dec[jan_to_dec["tmin_c"] <= 10.0]
-        row["first_day_tmin_le_10c"] = float(hit_10["date"].dt.dayofyear.min()) if not hit_10.empty else np.nan
+        row["first_day_tmin_le_10c"] = float(hit_10["date"].dt.day_of_year.min()) if not hit_10.empty else np.nan
         sep = df[(df["date"].dt.year == y) & (df["date"].dt.month == 9)]
         row["sep_days_tmin_le_12c"] = float((sep["tmin_c"] <= 12.0).sum()) if not sep.empty else np.nan
 
@@ -105,13 +125,13 @@ def build_yearly_features(
 
         rows.append(row)
 
+    if not rows:
+        return pd.DataFrame(columns=["station_id", "season_year", "year_index"])
     feat = pd.DataFrame(rows).sort_values("season_year").reset_index(drop=True)
-    if feat.empty:
-        return feat
 
     # Generic lag/trend features.
     for col in ["summer_tmin_mean", "winter_tmean", "aug_sep_tmin_slope", "mar_apr_tmin_slope"]:
-        feat[f"{col}_lag1"] = feat[col].shift(1)
+        feat[f"{col}_lag1"] = calendar_lag(feat.set_index("season_year")[col], feat["season_year"])
 
     # Lag target features.
     y_series = _target_series(targets_df, target_name=target_name, threshold=threshold)
@@ -121,7 +141,7 @@ def build_yearly_features(
     # WSI lag feature.
     wsi_series = _target_series(targets_df, target_name="wsi", threshold=None)
     feat = feat.merge(wsi_series.rename("wsi").reset_index(), on="season_year", how="left")
-    feat["wsi_lag1"] = feat["wsi"].shift(1)
+    feat["wsi_lag1"] = calendar_lag(wsi_series, feat["season_year"])
 
     return feat
 
@@ -174,11 +194,10 @@ def build_features_cache(
             end_year=end_year,
         )
 
-        # Feature-level imputation flags for model tolerance.
+        # Preserve missingness; fitted preprocessing belongs inside training folds.
         for col in ["summer_tmin_mean", "winter_tmean", "target_lag1", "wsi_lag1"]:
             if col in feat.columns:
                 feat[f"{col}_imputed"] = feat[col].isna().astype(int)
-                feat[col] = feat[col].fillna(feat[col].median())
 
         feat.to_parquet(out_path, index=False)
         written.append(sid)

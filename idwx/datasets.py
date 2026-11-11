@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 
 from idwx.config import Config
-from idwx.features import build_features_cache, build_yearly_features
+from idwx.features import (
+    build_features_cache,
+    build_yearly_features,
+    prior_target_statistics,
+)
 from idwx.targets import build_targets_for_station
 
 
@@ -49,11 +53,10 @@ def build_station_dataset(
         )
     merged = feats.merge(y, on=["station_id", "season_year"], how="left")
 
-    # Simple feature-imputation flags as required by contract.
+    # Legacy flags identify values needing imputation; never fit on all years.
     for c in ["summer_tmin_mean", "winter_tmean", "target_lag1"]:
         if c in merged.columns:
             merged[f"{c}_imputed"] = merged[c].isna().astype(int)
-            merged[c] = merged[c].fillna(merged[c].median())
 
     return merged.sort_values("season_year").reset_index(drop=True)
 
@@ -89,19 +92,33 @@ def build_future_row(history_df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Cannot build future row from empty history")
 
     h = history_df.sort_values("season_year").reset_index(drop=True)
+    if h["station_id"].nunique(dropna=False) != 1 or h["season_year"].duplicated().any():
+        raise ValueError("Future rows require a single station and unique season years")
     latest = h.iloc[-1].copy()
-    future = latest.copy()
-    future["season_year"] = int(latest["season_year"]) + 1
-    future["year_index"] = int(future["season_year"])
+    year = int(latest["season_year"]) + 1
+    # Only static metadata and explicit prior-year values may be carried forward.
+    # Current-season weather and unknown feature columns remain unavailable.
+    future = {col: np.nan for col in h.columns}
+    for col in ("station_id", "elevation_m"):
+        if col in h:
+            future[col] = latest[col]
+    future["season_year"] = year
+    future["year_index"] = year
 
     # Update lag-driven features.
     if "target_doy" in h.columns:
-        future["target_lag1"] = float(h.iloc[-1]["target_doy"]) if pd.notna(h.iloc[-1]["target_doy"]) else np.nan
-        future["target_roll3"] = float(h["target_doy"].tail(3).mean())
-        future["target_roll5"] = float(h["target_doy"].tail(5).mean())
+        stats = prior_target_statistics(h.set_index("season_year")["target_doy"], pd.Series([year]))
+        future.update(stats.iloc[0].to_dict())
 
     if "wsi" in h.columns:
         future["wsi_lag1"] = float(h.iloc[-1]["wsi"]) if pd.notna(h.iloc[-1]["wsi"]) else np.nan
+
+    for col in h.columns:
+        if col.endswith("_lag1") and col[:-5] in h and col != "target_lag1":
+            future[col] = latest[col[:-5]]
+    for col in h.columns:
+        if col.endswith("_imputed") and col[:-8] in future:
+            future[col] = int(pd.isna(future[col[:-8]]))
 
     future["target_doy"] = np.nan
     return pd.DataFrame([future])

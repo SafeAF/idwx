@@ -10,7 +10,6 @@ from sklearn.ensemble import RandomForestRegressor
 from idwx.models.base import BaseModel
 from idwx.models.conformal import residual_quantile
 
-
 NON_FEATURE_COLS = {"station_id", "season_year", "target_doy"}
 
 
@@ -39,19 +38,19 @@ class RFConformalModel(BaseModel):
         self.qhat: float = np.nan
         self.metadata: dict[str, object] = {}
 
-    def _prep_X(self, X: pd.DataFrame) -> pd.DataFrame:
-        use = [c for c in X.columns if c not in NON_FEATURE_COLS]
-        self.feature_cols = use if not self.feature_cols else self.feature_cols
+    def _prep_X(self, X: pd.DataFrame, *, fit: bool = False) -> pd.DataFrame:
+        if fit:
+            self.feature_cols = [c for c in X.columns if c not in NON_FEATURE_COLS]
         out = X[self.feature_cols].copy()
         out = out.replace([np.inf, -np.inf], np.nan)
-        if not self.feature_medians:
+        if fit:
             med = out.median(numeric_only=True)
             self.feature_medians = {k: float(v) for k, v in med.items() if pd.notna(v)}
         for c in out.columns:
             out[c] = out[c].fillna(self.feature_medians.get(c, 0.0))
         return out
 
-    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> "RFConformalModel":
+    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> RFConformalModel:
         frame = X.copy()
         frame["y"] = y.values
         frame = frame.replace([np.inf, -np.inf], np.nan)
@@ -67,7 +66,7 @@ class RFConformalModel(BaseModel):
         if train["y"].notna().sum() < 8:
             raise ValueError("RF model requires at least 8 non-null training rows")
 
-        Xtr = self._prep_X(train.drop(columns=["y"]))
+        Xtr = self._prep_X(train.drop(columns=["y"]), fit=True)
         ytr = train["y"]
         self.model.fit(Xtr, ytr)
 
@@ -86,8 +85,8 @@ class RFConformalModel(BaseModel):
             "alpha": self.alpha,
             "feature_count": len(self.feature_cols),
             "n_total": int(n),
-            "n_train": int(len(train)),
-            "n_calib": int(len(calib)),
+            "n_train": len(train),
+            "n_calib": len(calib),
             "qhat": self.qhat,
             "random_state": self.random_state,
         }
@@ -110,5 +109,5 @@ class RFConformalModel(BaseModel):
         joblib.dump(self, path / "model.pkl")
 
     @classmethod
-    def load(cls, path: Path) -> "RFConformalModel":
+    def load(cls, path: Path) -> RFConformalModel:
         return joblib.load(path / "model.pkl")

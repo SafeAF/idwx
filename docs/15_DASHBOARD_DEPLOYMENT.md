@@ -160,7 +160,14 @@ the official Windows Nginx package. Production TLS and redirect checks still
 require the deployment's actual certificates and hostname.
 
 Browser preview was attempted but its access host was unavailable in the
-implementation session. Desktop/mobile appearance, interactive controls,
+implementation session. A native Firefox fallback on November 11, 2026 was
+stopped by the computer-use tool because URL policy enforcement is unsupported
+for this Windows browser. The companion page supplied no document session.
+Desktop/mobile appearance, interactive controls,
 keyboard navigation, chart/table agreement in the rendered page, downloads,
 and failed-request recovery therefore still need live browser verification.
 No screenshots or claims of browser-tested behavior are provided.
+
+The initial forecast audit and input leakage corrections are recorded in
+`16_FORECAST_CORRECTNESS_AUDIT.md`. Those synthetic regression checks do not
+establish forecast accuracy or calibration. No forecasts are published.

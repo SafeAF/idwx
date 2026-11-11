@@ -87,3 +87,7 @@ See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) and
 The Nginx configuration is in `deploy/nginx.conf`. Real-source auditing,
 production browser/TLS checks, and forecast validation remain outstanding.
 
+The [forecast correctness audit](docs/16_FORECAST_CORRECTNESS_AUDIT.md) records
+input leakage fixes, required cache rebuilding, and the remaining blockers.
+Local modeling commands remain research tools; no forecasts are published.
+

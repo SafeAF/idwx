@@ -95,6 +95,8 @@ trip. Targeted Ruff checks and `git diff --check` passed.
 Run `uv run pytest -q` and `uv run ruff check idwx/frost.py idwx/config.py
 idwx/targets.py idwx/io.py tests`. Rebuild old daily and target caches; remove
 or regenerate derived feature/dataset/model artifacts before training again.
-Historical calendar-normalized summaries, static export, and forecast leakage
-audits remain future work. Existing model predictions have not been validated
-for publication.
+Historical calendar-normalized summaries and static export are implemented;
+see `14_WEB_DATA_CONTRACT.md` and `15_DASHBOARD_DEPLOYMENT.md`. The initial
+forecast source audit and input corrections are documented in
+`16_FORECAST_CORRECTNESS_AUDIT.md`. Existing model predictions have not been
+validated for publication.
