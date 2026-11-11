@@ -12,12 +12,15 @@ def create_model(model_name: str, config: dict) -> BaseModel:
         return TrendQuantileModel(quantiles=quantiles)
     if model_name == "rf":
         rf_cfg = config.get("rf", {})
-        alpha = float(config.get("conformal", {}).get("alpha", 0.2))
+        conformal_cfg = config.get("conformal", {})
+        alpha = float(conformal_cfg.get("alpha", 0.2))
         return RFConformalModel(
             n_estimators=int(rf_cfg.get("n_estimators", 500)),
             min_samples_leaf=int(rf_cfg.get("min_samples_leaf", 2)),
             max_features=rf_cfg.get("max_features", "sqrt"),
             random_state=int(rf_cfg.get("random_state", 1337)),
             alpha=alpha,
+            calibration_fraction=float(conformal_cfg.get("calibration_fraction", 0.2)),
+            min_calibration_years=conformal_cfg.get("min_calibration_years", 5),
         )
     raise ValueError(f"Unsupported model: {model_name}")

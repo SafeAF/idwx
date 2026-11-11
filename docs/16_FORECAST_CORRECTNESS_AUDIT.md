@@ -57,6 +57,14 @@ same input allowlist and information boundary. It bypasses legacy derived
 caches and versions input provenance and artifact context. This is a research
 protocol; no forecast promotion gate or forecast export has been added.
 
+RF calibration version 2 is also implemented; see
+`18_RF_CALIBRATION_CONTRACT.md`. It reserves whole calendar years, leaves a
+full year between fitting and calibration, applies the finite-sample residual
+rank, and withholds unsupported intervals. Training-residual and arbitrary
+width fallbacks are removed. Actual partitions, nominal coverage and observed
+coverage diagnostics are reported. Earlier RF artifacts require retraining.
+This does not establish empirical coverage or weather-series exchangeability.
+
 ## Remaining blockers found in source
 
 | Area | Evidence and consequence | Required follow-up |
@@ -64,7 +72,7 @@ protocol; no forecast promotion gate or forecast export has been added.
 | Issue-date feature availability | The new opt-in protocol excludes weather features and uses only confirmed frost targets through Y-2, with consistent per-row and outer-fold cutoffs. The legacy `build_yearly_features` path still includes later seasonal observations without an issue cutoff. | Use the protocol for new frost research. Audit source delivery and historical revisions before interpreting it as an as-issued forecast. Any protocol admitting more recent weather needs separate availability rules and validation. |
 | Full-history WSI normalization | Legacy WSI and its lags still use full-history normalization. The new protocol excludes all WSI inputs. | Keep WSI outside frost predictors until normalization is fitted within training folds. Audit winter target coverage separately. |
 | Forecast context | Protocol training/prediction require explicit year and matching local January 1 issue, and report cutoff, last observation and training period. Legacy prediction still chooses latest dataset year + 1. | Keep legacy output out of publication. Evaluate source freshness and the intentionally conservative holdback; an explicit research year and a reported old source date do not establish current forecast validity. |
-| Calibration and labeling | RF holds out the last 20% of training rows, but `residual_quantile` uses an interpolated residual quantile without a finite-sample rank correction. RF includes a training-residual fallback and a fixed-width prediction fallback. Its symmetric bounds are returned as `p10`/`p90`. | Define a chronological calibration protocol and minimum calibration sample. Reject unsupported intervals instead of substituting training residuals or arbitrary widths. Use interval-bound labels unless tail quantiles are established. Evaluate empirical coverage under temporal change; chronological splitting alone establishes no calibration guarantee. |
+| Calibration and labeling | RF now has a versioned whole-year chronological split, explicit sample floors, one-year gap, finite-sample rank and no fallback intervals. Metadata and protocol output label symmetric bounds explicitly; legacy internal field names remain aliases. Empirical temporal coverage is unmeasured. | Validate coverage/width and tail miss rates using sufficient historical folds and a final holdout. Review dependence, drift and pooled-station effects. Choose publication sample/calibration criteria before final holdout review; chronological splitting alone establishes no calibration guarantee. |
 | Date representation | The opt-in protocol normalizes onto year 2000, records the reference, and rejects crossed/nonfinite/out-of-calendar bounds. Legacy datasets still use actual-year DOY. No forecast-year date conversion or target-window support policy is validated. | Test and validate conversion and window bounds without silent clipping. Treat protocol output as numeric calendar coordinates until that policy is defined. |
 | Model identity | Protocol artifacts include issue context and input provenance, are separated by protocol/year and bypass stale derived caches. Legacy inputs remain unversioned; daily cache ingestion/vintage is not independently verified. | Add daily input provenance and source audit evidence before promotion. The registry or input version alone is not a validation status. |
 | Evaluation/reporting | Empty/skipped folds, counts, training spans, calibration counts, width and paired climatology comparisons are implemented. Upstream feature leakage, real-data results and calibration validation remain unresolved. | Re-run both frost targets with clean fold inputs and sufficient training/calibration history. Review paired error, bias, interval coverage/width, sample counts and uncertainty against predetermined promotion criteria. |
@@ -116,10 +124,11 @@ evidence of corrected preprocessing or readiness.
 .venv/Scripts/python.exe -m ruff check idwx/features.py idwx/datasets.py idwx/models/rf.py tests/test_forecast_inputs.py
 .venv/Scripts/python.exe -m ruff check idwx/eval.py idwx/registry.py idwx/cli.py tests/test_evaluation.py tests/test_registry.py
 .venv/Scripts/python.exe -m ruff check idwx/forecast_protocol.py tests/test_forecast_protocol.py
+.venv/Scripts/python.exe -m ruff check idwx/models/conformal.py idwx/models/rf.py idwx/models/__init__.py tests/test_calibration.py
 node --test tests/web.test.mjs
 ```
 
-Verification after the protocol follow-up: 94 Python tests passed,
+Verification after the calibration follow-up: 132 Python tests passed,
 one optional live Nginx test skipped; five frontend tests passed. Targeted Ruff
 and `git diff --check` passed. Nine input regression cases cover missing calendar years,
 rolling counts, ambiguous histories, cache missingness, future-row construction,
@@ -129,6 +138,9 @@ strict JSON, threshold isolation, artifact compatibility and run completion/
 collision behavior, including a synthetic CLI train/predict round trip.
 The protocol adds 21 cases, including perturbing later observations without
 changing permitted inputs or earlier predictions; see its document for scope.
+The calibration follow-up adds 38 cases for finite ranks, explicit failures,
+chronological partitions, preprocessing isolation, refits, state/serialization
+and reporting. See the calibration contract for detail.
 These are regression checks, not accuracy or calibration measurements.
 
 ## Infrastructure findings

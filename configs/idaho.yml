@@ -54,5 +54,7 @@ models:
     random_state: 1337
   conformal:
     alpha: 0.2
+    calibration_fraction: 0.2
+    min_calibration_years: 5
 
 hourly_min_coverage: 18

@@ -280,27 +280,13 @@ def predict(
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    if model == "climatology":
-        from idwx.models.climatology import ClimatologyModel
-
-        mdl = ClimatologyModel.load(model_dir)
-    elif model == "trend":
-        from idwx.models.trend import TrendQuantileModel
-
-        mdl = TrendQuantileModel.load(model_dir)
-    elif model == "rf":
-        from idwx.models.rf import RFConformalModel
-
-        mdl = RFConformalModel.load(model_dir)
-    else:
-        raise typer.Exit(f"Unsupported model {model}")
-
-    pred = mdl.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
-
-    from idwx.models.climatology import ClimatologyModel
-
-    baseline_model = ClimatologyModel.load(baseline_dir)
-    baseline = baseline_model.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
+    try:
+        mdl = type(create_model(model, cfg.models)).load(model_dir)
+        pred = mdl.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
+        baseline_model = type(create_model("climatology", cfg.models)).load(baseline_dir)
+        baseline = baseline_model.predict(future.drop(columns=["target_doy"], errors="ignore"), cfg.models).iloc[0]
+    except (ValueError, FileNotFoundError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     out = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -317,6 +303,8 @@ def predict(
             "p90": float(baseline["p90"]),
         },
     }
+    if model == "rf":
+        out["interval_metadata"] = mdl.metadata
 
     if protocol is not None:
         values = [float(pred[key]) for key in ("p10", "p50", "p90")]

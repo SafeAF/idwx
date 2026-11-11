@@ -15,6 +15,7 @@ from idwx.forecast_protocol import (
     validate_protocol,
 )
 from idwx.models import create_model
+from idwx.models.conformal import InsufficientCalibrationError
 from idwx.registry import threshold_key
 
 YEARLY_COLUMNS = [
@@ -23,7 +24,19 @@ YEARLY_COLUMNS = [
     "n_train_years", "n_calibration_rows",
     "forecast_protocol", "issue_date", "information_cutoff_date",
     "calendar_reference_year",
+    "fitting_start_year", "fitting_end_year", "calibration_start_year", "calibration_end_year",
+    "n_fitting_years", "n_calibration_years", "n_embargo_rows", "nominal_coverage",
+    "calibration_rank", "interval_semantics",
 ]
+
+
+def _record_calibration(row: dict, model: object) -> None:
+    metadata = getattr(model, "metadata", {})
+    for column in ("fitting_start_year", "fitting_end_year", "calibration_start_year", "calibration_end_year",
+                   "n_fitting_years", "n_calibration_years", "nominal_coverage", "calibration_rank", "interval_semantics"):
+        row[column] = metadata.get(column, np.nan)
+    row["n_calibration_rows"] = metadata.get("n_calib", np.nan)
+    row["n_embargo_rows"] = metadata.get("n_embargo", np.nan)
 
 
 def _metrics(df: pd.DataFrame) -> dict:
@@ -39,6 +52,11 @@ def _metrics(df: pd.DataFrame) -> dict:
                            & (evaluated["actual"] <= evaluated["pred_p90"])).mean()) if len(e) else np.nan,
         "mean_interval_width": float((evaluated["pred_p90"] - evaluated["pred_p10"]).mean()) if len(e) else np.nan,
     }
+    nominal = pd.to_numeric(evaluated.get("nominal_coverage", pd.Series(dtype=float)), errors="coerce")
+    summary["nominal_coverage"] = float(nominal.iloc[0]) if len(e) and nominal.notna().all() and nominal.nunique() == 1 else np.nan
+    summary["coverage_minus_nominal"] = summary["coverage"] - summary["nominal_coverage"]
+    summary["lower_miss_rate"] = float((evaluated.actual < evaluated.pred_p10).mean()) if len(e) else np.nan
+    summary["upper_miss_rate"] = float((evaluated.actual > evaluated.pred_p90).mean()) if len(e) else np.nan
     if "baseline_pred_p50" in evaluated:
         paired = evaluated[np.isfinite(pd.to_numeric(evaluated["baseline_pred_p50"], errors="coerce"))]
         summary["n_paired"] = len(paired)
@@ -135,11 +153,17 @@ def walk_forward_backtest(dataset: pd.DataFrame, model_name: str, cfg: Config, *
             try:
                 model.fit(X_train, y_train, meta=train[["station_id", "season_year"]], config=cfg.models)
                 pred = model.predict(X_test, cfg.models)
+            except InsufficientCalibrationError as exc:
+                _record_calibration(row, model)
+                row.update(status="insufficient_calibration", reason=str(exc))
+                rows.append(row)
+                continue
             except ValueError as exc:
+                _record_calibration(row, model)
                 row.update(status="model_unavailable", reason=str(exc))
                 rows.append(row)
                 continue
-            row["n_calibration_rows"] = getattr(model, "metadata", {}).get("n_calib", np.nan)
+            _record_calibration(row, model)
             if len(pred) != 1 or not {"p10", "p50", "p90"}.issubset(pred.columns):
                 raise ValueError("Model must return one prediction with p10/p50/p90 per test row")
             bounds = pred.iloc[0][["p10", "p50", "p90"]].to_numpy(dtype=float)

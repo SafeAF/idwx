@@ -97,3 +97,8 @@ prediction. It uses confirmed older frost dates, excludes weather/WSI inputs,
 and requires an explicit forecast year and issue date. It remains unvalidated
 and does not add forecasts to the website.
 
+The [RF calibration contract](docs/18_RF_CALIBRATION_CONTRACT.md) now uses
+held-out calendar years and a finite-sample residual rank. Unsupported intervals
+fail explicitly; older RF artifacts require retraining. Coverage on real weather
+data still needs validation, and forecasts remain unpublished.
+

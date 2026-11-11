@@ -72,6 +72,9 @@ station in the input dataset, including skipped folds. `status` identifies:
 - `insufficient_training`: too few earlier years with finite targets.
 - `model_unavailable`: fitting or prediction raised a `ValueError`; `reason`
   retains its explanation, including model-specific sample requirements.
+- `insufficient_calibration`: held-out calibration years or the finite-sample
+  residual rank cannot support an interval. Available partition counts remain
+  in the row; no fallback prediction is scored.
 - `invalid_prediction`: nonfinite or crossed prediction bounds. These are
   excluded rather than repaired silently.
 
@@ -107,3 +110,11 @@ labels through test year minus two, and adds explicit issue/cutoff/calendar
 columns and a protocol report subdirectory. It shares its input rules with
 training and prediction; see [the protocol](17_PRESEASON_RESEARCH_PROTOCOL.md).
 Calibration and real-data validation remain outstanding for every mode.
+
+RF calibration version 2 additionally reports its actual fitting/calibration
+spans and year counts, excluded row count, nominal coverage, residual rank and
+interval semantics. Summary/per-station tables include observed minus nominal
+coverage and lower/upper miss rates. Nominal coverage is blank/null for models
+without such metadata. These diagnostics do not establish calibration; see
+[the RF contract](18_RF_CALIBRATION_CONTRACT.md) for partition rules and
+remaining empirical checks.

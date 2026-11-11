@@ -3,8 +3,8 @@
 ## Core requirement
 
 Every model must output:
-- a point estimate (P50)
-- uncertainty bounds (P10/P90 or P20/P80)
+- a point estimate (a median only when supported by the estimator)
+- uncertainty bounds with explicit semantics
 - model metadata
 
 ## Model interface
@@ -51,5 +51,16 @@ Preferred method:
 - conformal prediction wrapper
 
 Why:
-- works in small data regimes
-- produces calibrated intervals without distribution assumptions
+- separates fitted model behavior from held-out interval construction
+- supports finite-sample marginal guarantees under exchangeability assumptions;
+  those assumptions have not been established for the weather series
+
+The implemented RF calibration contract is version 2: a chronological
+calibration tail with a configurable five-year minimum, a full calendar-year
+gap after at least eight fitting years, and a finite-sample residual order
+statistic. Unsupported intervals fail without substituting training residuals
+or fixed widths. RF's point is its regression estimate; the legacy `p10`/
+`p50`/`p90` API names do not certify quantiles. See
+[the calibration contract](18_RF_CALIBRATION_CONTRACT.md) for sample rules,
+metadata, migration and remaining validation requirements. No forecasts are
+published.

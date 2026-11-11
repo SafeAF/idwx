@@ -80,6 +80,8 @@ models:
 
   conformal:
     alpha: 0.2
+    calibration_fraction: 0.2
+    min_calibration_years: 5
 ~~~
 
 ## Rules
@@ -89,3 +91,12 @@ models:
 - Date strings in `windows` are `MM-DD` and interpreted in local time.
 - Winter season belongs to season_year `Y` and includes Dec(Y-1), Jan(Y), Feb(Y).
 - All randomness must be seeded via config.
+- `models.conformal.alpha` and `calibration_fraction` must be finite and strictly
+  between zero and one. `min_calibration_years` must be a positive integer.
+- RF reserves the latest configured fraction of distinct valid-target years,
+  with the configured minimum, for calibration. It requires at least eight
+  earlier fitting years after excluding the full preceding calendar year.
+  A finite residual rank must also be supported by the actual calibration
+  row count. Settings that cannot satisfy these rules fail explicitly.
+  These research floors are not forecast publication criteria; see
+  `18_RF_CALIBRATION_CONTRACT.md`.

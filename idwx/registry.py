@@ -15,6 +15,7 @@ import yaml
 
 from idwx.config import Config
 from idwx.models.base import BaseModel
+from idwx.models.conformal import CALIBRATION_VERSION
 
 ARTIFACT_VERSION = 2
 
@@ -112,6 +113,7 @@ def save_model_artifacts(
         "validation_status": "unvalidated_research",
         "forecast_context": forecast_context,
         "input_provenance": dataset.attrs if forecast_context is not None else None,
+        "rf_calibration_version": CALIBRATION_VERSION if model_name == "rf" else None,
         "threshold_c": threshold_c,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit_hash": git_commit_hash(),
@@ -159,6 +161,8 @@ def latest_model_dir(
     expected = {"artifact_version": ARTIFACT_VERSION, "target": target, "station": station,
                 "model_name": model_name, "threshold_c": threshold_c, "config_hash": hash_config(config),
                 "forecast_context": forecast_context}
+    if model_name == "rf":
+        expected["rf_calibration_version"] = CALIBRATION_VERSION
     if forecast_context is not None:
         if dataset is None:
             raise ValueError("Protocol model lookup requires the training dataset")

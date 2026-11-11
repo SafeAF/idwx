@@ -94,10 +94,10 @@ def test_future_rejects_ambiguous_history(stations, years):
 
 
 def test_rf_does_not_learn_medians_from_calibration_or_prediction():
-    X = pd.DataFrame({"station_id": "demo", "season_year": range(2000, 2012),
-                      "weather": [np.nan] * 9 + [100., 200., 300.]})
+    X = pd.DataFrame({"station_id": "demo", "season_year": range(2000, 2020),
+                      "weather": [np.nan] * 15 + [100., 200., 300., 400., 500.]})
     model = RFConformalModel(n_estimators=5)
-    y = pd.Series(np.arange(12, dtype=float))
+    y = pd.Series(np.arange(20, dtype=float))
     model.fit(X, y, meta=None, config={})
     assert model.feature_medians == {}  # All-null training feature uses fixed zero fallback.
     model.predict(X.iloc[-1:], {})

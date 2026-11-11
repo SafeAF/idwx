@@ -204,7 +204,7 @@ def test_protocol_rf_train_predict_round_trip(cfg, monkeypatch):
     monkeypatch.setattr("idwx.cli.load_config", lambda *args: cfg)
     runner = CliRunner()
     args = ["--target", "last_spring_frost", "--protocol", PROTOCOL_ID,
-            "--season-year", "2012", "--issue-date", "2012-01-01"]
+            "--season-year", "2013", "--issue-date", "2013-01-01"]
     trained = runner.invoke(app, ["train", *args, "--models", "rf,climatology"])
     assert trained.exit_code == 0, trained.output
     assert json.loads(trained.output)["count"] == 2

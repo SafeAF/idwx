@@ -106,6 +106,13 @@ the exact issue context and input provenance. Protocol reports add a protocol
 subdirectory. These artifacts cannot substitute for legacy models or another
 forecast year. No modeling mode publishes predictions to the website.
 
+RF now requires calibration version 2 and records `rf_calibration_version: 2`
+in artifact metadata, checked before loading. Retrain RF artifacts made under
+the earlier fallback interval method, including earlier protocol artifacts.
+RF prediction JSON includes explicit `interval_metadata`; these symmetric
+residual bounds remain unvalidated and do not establish P10/P90 tail quantiles.
+See `18_RF_CALIBRATION_CONTRACT.md` for sample rules and configuration.
+
 See [the protocol contract and examples](17_PRESEASON_RESEARCH_PROTOCOL.md)
 for the information cutoff, output fields and remaining validation requirements.
 

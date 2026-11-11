@@ -87,7 +87,7 @@ Artifacts have a separate protocol and forecast-year namespace:
 models/<target>/<station>/<model>/threshold_0p0/frost_jan01_v1/season_2024/<run-id>/
 ```
 
-The existing registry format remains version 2; its optional forecast context
+The registry format remains version 2; its optional forecast context
 now records protocol/input/calendar versions, explicit year/issue/cutoff,
 effective station timezone and last recorded observation before the cutoff.
 Input provenance is recorded separately. Both are verified alongside the
@@ -136,7 +136,8 @@ later-observation perturbations, earlier-fold invariance, approved model
 columns, the training holdback, missing/partial years, leap normalization,
 station windows, timezone context, issue-date validation, cache bypass,
 protocol artifact context, calendar-bound rejection, and CLI train/predict
-round trips with climatology/trend and RF. Full verification: **94 Python
+round trips with climatology/trend and RF. Full verification after the calibration
+follow-up: **132 Python
 tests passed**, one optional Nginx test skipped; five frontend tests passed.
 Targeted Ruff and `git diff --check` passed.
 
@@ -146,3 +147,11 @@ baseline comparisons, promotion criteria, forecast-window support, calendar
 conversion, and production browser/TLS checks. This protocol supplies a
 reproducible research boundary; it is not evidence of predictive accuracy or
 calibration. No forecasts are published.
+
+Subsequent calibration follow-up: RF now requires the separately versioned
+held-out calibration contract described in `18_RF_CALIBRATION_CONTRACT.md`.
+It reserves at least five calibration years by default plus a full year after
+the fitting partition, and requires eight fitting years. Earlier RF artifacts
+must be retrained. The protocol's own input version is unchanged; its RF round
+trip now supplies the larger required
+history. Temporal coverage and real-data validation remain unmeasured.
