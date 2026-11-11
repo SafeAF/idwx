@@ -1,43 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
 from idwx.config import Config
-
-
-@dataclass
-class FrostResult:
-    date: pd.Timestamp | None
-    doy: float | None
-
-
-def _window_dates(year: int, mmdd_start: str, mmdd_end: str) -> tuple[pd.Timestamp, pd.Timestamp]:
-    start = pd.Timestamp(datetime.strptime(f"{year}-{mmdd_start}", "%Y-%m-%d"))
-    end = pd.Timestamp(datetime.strptime(f"{year}-{mmdd_end}", "%Y-%m-%d"))
-    return start, end
-
-
-def _find_last_frost(df: pd.DataFrame, year: int, threshold_c: float, start_mmdd: str, end_mmdd: str) -> FrostResult:
-    start, end = _window_dates(year, start_mmdd, end_mmdd)
-    sub = df[(df["date"] >= start) & (df["date"] <= end) & (df["tmin_c"] <= threshold_c)].sort_values("date")
-    if sub.empty:
-        return FrostResult(None, None)
-    d = pd.Timestamp(sub.iloc[-1]["date"])
-    return FrostResult(d, float(d.dayofyear))
-
-
-def _find_first_frost(df: pd.DataFrame, year: int, threshold_c: float, start_mmdd: str, end_mmdd: str) -> FrostResult:
-    start, end = _window_dates(year, start_mmdd, end_mmdd)
-    sub = df[(df["date"] >= start) & (df["date"] <= end) & (df["tmin_c"] <= threshold_c)].sort_values("date")
-    if sub.empty:
-        return FrostResult(None, None)
-    d = pd.Timestamp(sub.iloc[0]["date"])
-    return FrostResult(d, float(d.dayofyear))
+from idwx.frost import frost_rows, validated_daily
 
 
 def _cold_snap_max_run(mask: pd.Series) -> int:
@@ -53,87 +20,19 @@ def _cold_snap_max_run(mask: pd.Series) -> int:
 
 
 def build_targets_for_station(daily_df: pd.DataFrame, station_id: str, cfg: Config) -> pd.DataFrame:
-    df = daily_df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df = df[df["station_id"] == station_id].sort_values("date")
-    if df.empty:
-        return pd.DataFrame(
-            columns=[
-                "station_id",
-                "season_year",
-                "threshold_c",
-                "target_name",
-                "value_date",
-                "value_doy",
-                "value_float",
-                "quality_flags",
-            ]
-        )
-
-    years = sorted(df["date"].dt.year.dropna().unique().tolist())
-    start_year = int(cfg.backtest.get("start_year", years[0])) if years else None
-    end_year = int(cfg.backtest.get("end_year", years[-1])) if years else None
-    if start_year is not None and end_year is not None:
-        years = [y for y in years if start_year <= y <= end_year]
+    df = validated_daily(daily_df, station_id).reset_index(drop=True)
+    observed_years = df["date"].dt.year
+    start_year = cfg.backtest.get("start_year", int(observed_years.min()) if not df.empty else None)
+    end_year = cfg.backtest.get("end_year", int(observed_years.max()) if not df.empty else None)
+    if start_year is None or end_year is None:
+        raise ValueError("An explicit year range is required when daily data is empty")
+    if int(end_year) < int(start_year):
+        raise ValueError("end_year must be at least start_year")
+    years = range(int(start_year), int(end_year) + 1)
     rows: list[dict] = []
 
     for y in years:
-        for thr in cfg.frost_thresholds_c:
-            sf = _find_last_frost(
-                df,
-                y,
-                thr,
-                cfg.windows["last_spring_frost"]["start"],
-                cfg.windows["last_spring_frost"]["end"],
-            )
-            ff = _find_first_frost(
-                df,
-                y,
-                thr,
-                cfg.windows["first_fall_frost"]["start"],
-                cfg.windows["first_fall_frost"]["end"],
-            )
-
-            rows.append(
-                {
-                    "station_id": station_id,
-                    "season_year": int(y),
-                    "threshold_c": float(thr),
-                    "target_name": "last_spring_frost",
-                    "value_date": sf.date,
-                    "value_doy": sf.doy,
-                    "value_float": np.nan,
-                    "quality_flags": "" if sf.date is not None else "no_event_in_window",
-                }
-            )
-            rows.append(
-                {
-                    "station_id": station_id,
-                    "season_year": int(y),
-                    "threshold_c": float(thr),
-                    "target_name": "first_fall_frost",
-                    "value_date": ff.date,
-                    "value_doy": ff.doy,
-                    "value_float": np.nan,
-                    "quality_flags": "" if ff.date is not None else "no_event_in_window",
-                }
-            )
-
-            ffd = np.nan
-            if sf.date is not None and ff.date is not None:
-                ffd = float((ff.date - sf.date).days)
-            rows.append(
-                {
-                    "station_id": station_id,
-                    "season_year": int(y),
-                    "threshold_c": float(thr),
-                    "target_name": "freeze_free_days",
-                    "value_date": pd.NaT,
-                    "value_doy": np.nan,
-                    "value_float": ffd,
-                    "quality_flags": "" if pd.notna(ffd) else "missing_dependency",
-                }
-            )
+        rows.extend(frost_rows(df.set_index('date', drop=False), station_id, y, cfg))
 
         winter_months = cfg.winter.get("season_months", [12, 1, 2])
         winter = df[

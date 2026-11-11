@@ -124,6 +124,8 @@ def ingest_era5_hourly_csv(
     elev_seen: float | None = elev_from_station
     chunk_count = 0
     row_count = 0
+    seen_timestamps: set[pd.Timestamp] = set()
+    covered_hours: dict[pd.Timestamp, set[pd.Timestamp]] = defaultdict(set)
     for chunk in reader:
         chunk_count += 1
         row_count += len(chunk)
@@ -140,14 +142,21 @@ def ingest_era5_hourly_csv(
         temp = pd.to_numeric(chunk.get("temperature"), errors="coerce")
         precip = pd.to_numeric(chunk.get("precip"), errors="coerce") if "precip" in chunk.columns else pd.Series(np.nan, index=chunk.index)
         utc_offset = pd.to_numeric(chunk.get("utc_offset"), errors="coerce") if "utc_offset" in chunk.columns else None
-        local_date = _compute_local_date(ts, utc_offset, config.timezone)
+        timestamps = pd.to_datetime(ts, errors="coerce", utc=True)
+        valid_timestamps = timestamps.dropna()
+        if valid_timestamps.duplicated().any() or any(t in seen_timestamps for t in valid_timestamps):
+            raise ValueError(f"Duplicate hourly timestamps in {path.name}; resolve before ingestion")
+        seen_timestamps.update(valid_timestamps)
+        timezone_name = matched.timezone if matched and matched.timezone else config.timezone
+        local_date = _compute_local_date(ts, utc_offset, timezone_name)
 
         if elev_seen is None and "elevation" in chunk.columns:
             elev_vals = pd.to_numeric(chunk["elevation"], errors="coerce").dropna()
             if not elev_vals.empty:
                 elev_seen = float(elev_vals.iloc[0])
 
-        frame = pd.DataFrame({"local_date": local_date, "temperature": temp, "precip": precip})
+        frame = pd.DataFrame({"local_date": local_date, "temperature": temp, "precip": precip,
+                              "hour": timestamps.dt.floor("h")})
         frame = frame.dropna(subset=["local_date"])
         frame = frame.sort_values("local_date")
 
@@ -155,7 +164,10 @@ def ingest_era5_hourly_csv(
             acc = day_acc[pd.Timestamp(day)]
             t = g["temperature"].to_numpy(dtype=float)
             valid_t = t[np.isfinite(t)]
-            acc.n_obs += int(valid_t.size)
+            # Subhourly readings cannot make a sparse day meet hourly coverage.
+            hours = g.loc[np.isfinite(g["temperature"]), "hour"].dropna()
+            covered_hours[pd.Timestamp(day)].update(hours)
+            acc.n_obs = len(covered_hours[pd.Timestamp(day)])
             if valid_t.size > 0:
                 acc.temp_sum += float(valid_t.sum())
                 acc.temp_count += int(valid_t.size)

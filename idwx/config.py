@@ -15,6 +15,7 @@ class StationMeta:
     lon: float | None = None
     elevation_m: float | None = None
     source: str | None = None
+    timezone: str | None = None
 
 
 @dataclass
@@ -32,6 +33,7 @@ class Config:
     backtest: dict[str, Any]
     models: dict[str, dict[str, Any]]
     hourly_min_coverage: int = 18
+    station_windows: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
 
 
 DEFAULT_WINDOWS = {
@@ -64,12 +66,13 @@ def load_config(path: str | Path) -> Config:
         timezone=raw.get("timezone", "America/Boise"),
         stations_file=stations_file,
         frost_thresholds_c=[float(x) for x in raw.get("frost_thresholds_c", [0.0, -2.0])],
-        windows=raw.get("windows", DEFAULT_WINDOWS),
+        windows={**DEFAULT_WINDOWS, **raw.get("windows", {})},
         winter=raw.get("winter", {}),
         gdd=raw.get("gdd", {}),
         backtest=raw.get("backtest", {"start_year": 1980, "end_year": 2022, "min_train_years": 20}),
         models=raw.get("models", {}),
         hourly_min_coverage=int(raw.get("hourly_min_coverage", 18)),
+        station_windows=raw.get("station_windows", {}),
     )
 
 
@@ -90,6 +93,7 @@ def load_stations(stations_file: str | Path) -> list[StationMeta]:
                 lon=row.get("lon"),
                 elevation_m=row.get("elevation_m"),
                 source=row.get("source"),
+                timezone=row.get("timezone"),
             )
         )
     return stations

@@ -5,3 +5,4 @@ stations:
     lon: -114.4609
     elevation_m: 1134
     source: NOAA
+    timezone: America/Boise

@@ -28,6 +28,31 @@ app.add_typer(target_app, name="target")
 app.add_typer(feature_app, name="feature")
 
 
+@app.command("export-web")
+def export_web(
+    config: str = typer.Option("configs/idaho.yml", "--config"),
+    output: Path = typer.Option(Path("web"), "--output"),
+    baseline_start: int | None = typer.Option(None, "--baseline-start"),
+    baseline_end: int | None = typer.Option(None, "--baseline-end"),
+    min_history_years: int = typer.Option(10, "--min-history-years", min=1),
+    demo: bool = typer.Option(False, "--demo", help="Export clearly labeled synthetic data without reading weather files."),
+) -> None:
+    """Export historical summaries and immutable JSON/CSV data for the static website."""
+    from idwx.web_export import export_web_data
+
+    if (baseline_start is None) != (baseline_end is None):
+        raise typer.BadParameter("Supply both --baseline-start and --baseline-end")
+    baseline = (baseline_start, baseline_end) if baseline_start is not None else None
+    cfg = load_config(config)
+    try:
+        manifest = export_web_data(cfg, load_stations(cfg.stations_file), output,
+                                   baseline=baseline, min_years=min_history_years, demo=demo)
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps({"release_id": manifest["release_id"], "data_kind": manifest["data_kind"],
+                           "manifest": str(output / "data" / "manifest.json")}))
+
+
 @data_app.command("build")
 def data_build(
     config: str = typer.Option("configs/idaho.yml", "--config"),

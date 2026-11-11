@@ -25,5 +25,53 @@ This repo assumes you have ~50 years of daily or hourly station data for ~20 loc
 - **Comparable**: multiple models, same targets, same scoring.
 - **Honest**: always output uncertainty intervals and baseline comparisons.
 
-## Repo layout
+## Historical frost implementation
+
+The first implementation slice of `docs/12_FROST_STATIC_WEBSITE_PLAN.md`
+adds conservative historical target calculations. Build local caches with:
+
+```powershell
+uv sync
+uv run idwx data build --rebuild
+uv run idwx target build --rebuild
+uv run pytest -q
+```
+
+Rebuild existing daily and target caches to apply the new coverage rules.
+Previously generated features, datasets, and models must also be regenerated
+before using these targets for modeling.
+
+Frost events use daily minimum temperature **at or below** each configured
+threshold. The defaults are 0 C (32 F) and -2 C (28.4 F). These
+temperature-based freeze dates are a proxy for frost risk; surface frost and
+crop damage also depend on local conditions.
+
+Only fully covered seasonal windows produce confirmed dates. Partial records
+retain provisional candidates and coverage counts. The legacy `freeze_free_days`
+value is the difference between confirmed fall and spring dates; its separate
+`frost_free_days` field counts strictly intervening days only when all those
+days are observed and above the threshold. See
+[the calculation contract and verification notes](docs/13_FROST_CALCULATIONS.md).
+
+Export versioned historical JSON and CSV data for the dashboard:
+
+```powershell
+uv run idwx export-web --output web
+```
+
+The command reads configured stations' daily caches and recomputes frost
+results under the current configuration. It excludes incomplete events from
+historical quantiles and requires 10 confirmed years by default. Use
+`--baseline-start YEAR --baseline-end YEAR` to select a baseline period.
+
+Without local weather data, generate explicitly labeled synthetic examples:
+
+```powershell
+uv run idwx export-web --demo --output .tmp/demo-web
+```
+
+See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) for release layout,
+summary semantics, and publication behavior. This step exports data only;
+dashboard HTML/CSS/JavaScript, deployment, and forecast validation remain
+subsequent implementation steps.
 
