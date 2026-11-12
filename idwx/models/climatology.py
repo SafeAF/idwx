@@ -17,7 +17,7 @@ class ClimatologyModel(BaseModel):
         self.global_stats: dict[str, float] = {"p10": np.nan, "p50": np.nan, "p90": np.nan}
         self.metadata: dict[str, object] = {}
 
-    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> "ClimatologyModel":
+    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> ClimatologyModel:
         frame = X.copy()
         frame["y"] = y.values
         for sid, g in frame.groupby("station_id"):
@@ -57,5 +57,5 @@ class ClimatologyModel(BaseModel):
         joblib.dump(self, path / "model.pkl")
 
     @classmethod
-    def load(cls, path: Path) -> "ClimatologyModel":
+    def load(cls, path: Path) -> ClimatologyModel:
         return joblib.load(path / "model.pkl")

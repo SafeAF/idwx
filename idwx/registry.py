@@ -148,7 +148,7 @@ def latest_model_dir(
     base = model_run_dir(config, target, station, model_name, threshold_c=threshold_c,
                          run_id="lookup", forecast_context=forecast_context).parent
     if not base.exists():
-        raise FileNotFoundError(f"No threshold-specific model directory: {base}. Retrain legacy models.")
+        raise FileNotFoundError(f"No threshold-specific model directory. Retrain legacy models. Expected: {base}")
     runs = sorted(p for p in base.iterdir() if p.is_dir() and (p / "config.yml").is_file())
     if not runs:
         raise FileNotFoundError(f"No run directories in {base}")

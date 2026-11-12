@@ -171,7 +171,7 @@ def test_protocol_cli_bypasses_derived_caches_and_records_forecast_context(cfg, 
     assert set(output["prediction"]) == {"lower", "point", "upper"}
     wrong_year = runner.invoke(app, ["predict", *common, "--season-year", "2009", "--issue-date", "2009-01-01",
                                     "--station", "demo", "--model", "climatology"])
-    assert wrong_year.exit_code != 0 and "season_2009" in wrong_year.output
+    assert wrong_year.exit_code != 0 and "No threshold-specific model directory" in wrong_year.output
     evaluated = runner.invoke(app, ["eval", *common, "--models", "climatology"])
     assert evaluated.exit_code == 0, evaluated.output
     report = json.loads(evaluated.output)["outputs"][0]

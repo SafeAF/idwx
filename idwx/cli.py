@@ -106,6 +106,31 @@ def export_web(
                            "manifest": str(output / "data" / "manifest.json")}))
 
 
+@app.command("verify-web")
+def verify_web_command(directory: Path = typer.Argument(...), allow_demo: bool = typer.Option(False, "--allow-demo")) -> None:  # noqa: B008 - Typer declarations.
+    """Verify a generated static package without modifying it or certifying source provenance."""
+    from idwx.web_verify import verify_web
+
+    try:
+        report = verify_web(directory, allow_demo=allow_demo)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(report, allow_nan=False))
+
+
+@app.command("package-web")
+def package_web_command(directory: Path = typer.Argument(...), output: Path = typer.Option(..., "--output"),  # noqa: B008 - Typer declarations.
+                        allow_demo: bool = typer.Option(False, "--allow-demo")) -> None:
+    """Verify and create a portable static-site ZIP; demo mode must be explicitly allowed."""
+    from idwx.web_verify import package_web
+
+    try:
+        report = package_web(directory, output, allow_demo=allow_demo)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(report, allow_nan=False))
+
+
 @data_app.command("build")
 def data_build(
     config: str = typer.Option("configs/idaho.yml", "--config"),

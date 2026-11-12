@@ -10,7 +10,7 @@ class BaseModel(ABC):
     name: str = "base"
 
     @abstractmethod
-    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> "BaseModel":
+    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> BaseModel:
         raise NotImplementedError
 
     @abstractmethod
@@ -23,5 +23,5 @@ class BaseModel(ABC):
 
     @classmethod
     @abstractmethod
-    def load(cls, path: Path) -> "BaseModel":
+    def load(cls, path: Path) -> BaseModel:
         raise NotImplementedError

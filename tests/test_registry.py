@@ -113,7 +113,7 @@ def test_predict_rejects_legacy_artifact_before_loading_pickle(cfg, monkeypatch)
     monkeypatch.setattr("idwx.cli.load_or_build_dataset", lambda *args, **kwargs: dataset())
     result = CliRunner().invoke(app, ["predict", "--target", "last_spring_frost", "--station", "demo",
                                      "--model", "climatology"])
-    assert result.exit_code != 0 and "Retrain legacy models" in result.output
+    assert result.exit_code != 0 and "No threshold-specific model directory" in result.output
 
 
 def test_train_and_predict_use_the_requested_threshold(cfg, monkeypatch):
@@ -131,7 +131,7 @@ def test_train_and_predict_use_the_requested_threshold(cfg, monkeypatch):
     assert result["threshold_c"] == -2. and result["validation_status"] == "unvalidated_research"
     assert result["prediction"]["p50"] == 102.5
     wrong_threshold = runner.invoke(app, args)
-    assert wrong_threshold.exit_code != 0 and "threshold_0p0" in wrong_threshold.output
+    assert wrong_threshold.exit_code != 0 and "No threshold-specific model directory" in wrong_threshold.output
 
 
 def test_unreadable_latest_metadata_fails_without_selecting_an_older_run(cfg):

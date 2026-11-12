@@ -182,3 +182,35 @@ agreement, release checksums and references, reproducibility, station safety,
 synthetic labels, stale-cache bypass, CLI options, and failure preservation
 of the active manifest. These checks use synthetic data because the configured
 real source directory remains unavailable.
+
+## Independent publication verification and portable delivery
+
+Run `uv run idwx verify-web PUBLICATION_DIRECTORY` before activation. This
+read-only check accepts schema 1.0.0, verifies the active and every retained
+release, canonical content identity, checksums, path/file/field allowlists,
+finite JSON values, event and interval consistency, recalculated historical
+summaries, and CSV/JSON agreement. Unexpected files or directories, private
+fields, forecasts, symlinks within the publication, and synthetic releases
+are rejected. A deployment root symlink itself is supported. A retained
+release must satisfy the same contract as the active release.
+
+`valid_static_package` means the package is internally consistent. It does
+not certify source units, reporting days, provenance, or forecast validity;
+complete the private source audit separately. Synthetic examples require
+explicit `--allow-demo`, including when a synthetic release is retained under
+an otherwise historical publication. Keep demo and real publication roots
+separate.
+
+Create an archive with:
+
+```powershell
+uv run idwx package-web PUBLICATION_DIRECTORY --output delivery/site.zip
+```
+
+The command verifies before packaging, extracts and verifies its own archive,
+then atomically replaces the destination ZIP. It prints a SHA-256 digest.
+Only public allowlisted files are archived, with stable ZIP timestamps;
+identical input bytes produce identical archive bytes. Export timestamps can
+change between exports even when the data release ID is unchanged. Choose
+an archive destination outside the publication root. For demo delivery only,
+add `--allow-demo` to both commands. Never deploy the repository as a site.

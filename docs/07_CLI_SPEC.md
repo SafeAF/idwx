@@ -147,3 +147,17 @@ See `19_FORECAST_DATE_POLICY.md` for date conversion and paired date metrics.
 - windows
 - model_params
 - backtest
+
+## Verify and package a static site
+
+```powershell
+uv run idwx verify-web PUBLICATION_DIRECTORY
+uv run idwx package-web PUBLICATION_DIRECTORY --output delivery/site.zip
+```
+
+Both reject synthetic data unless `--allow-demo` is explicitly supplied.
+Verification covers all retained releases, checksums, canonical identities,
+public field/file allowlists, summary recomputation, and CSV consistency.
+Packaging verifies the extracted ZIP before replacing the destination and
+prints its SHA-256. A successful result is package consistency, not source
+provenance certification. See `14_WEB_DATA_CONTRACT.md` for the exact scope.

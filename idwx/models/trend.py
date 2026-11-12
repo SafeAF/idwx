@@ -20,7 +20,7 @@ class TrendQuantileModel(BaseModel):
         self.fallback_quantiles: dict[str, float] = {"p10": np.nan, "p50": np.nan, "p90": np.nan}
         self.metadata: dict[str, object] = {}
 
-    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> "TrendQuantileModel":
+    def fit(self, X: pd.DataFrame, y: pd.Series, meta: pd.DataFrame | None, config: dict) -> TrendQuantileModel:
         frame = X.copy()
         frame["y"] = y.values
         fitted_stations = 0
@@ -88,5 +88,5 @@ class TrendQuantileModel(BaseModel):
         joblib.dump(self, path / "model.pkl")
 
     @classmethod
-    def load(cls, path: Path) -> "TrendQuantileModel":
+    def load(cls, path: Path) -> TrendQuantileModel:
         return joblib.load(path / "model.pkl")

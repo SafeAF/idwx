@@ -31,8 +31,8 @@ packages = ["idwx"]
 "web/js/charts.js" = "idwx/web_assets/js/charts.js"
 "web/js/format.js" = "idwx/web_assets/js/format.js"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
   "pytest>=8.0",
   "ruff>=0.6",
 ]

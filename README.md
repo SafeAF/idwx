@@ -10,6 +10,26 @@
 This is not daily weather forecasting.
 This is seasonal / event forecasting for agriculture.
 
+## Static frost dashboard delivery
+
+The historical dashboard, exporter, portable package verifier, Nginx template,
+and regression suite are implemented. Predictions remain research-only and
+are excluded from the website. The available demonstration uses synthetic
+data; real-data publication requires a reviewed source audit.
+
+```powershell
+uv sync --locked
+uv run idwx export-web --demo --output .tmp/demo-web
+uv run idwx verify-web .tmp/demo-web --allow-demo
+uv run idwx package-web .tmp/demo-web --allow-demo --output .tmp/delivery/idwx-demo-site.zip
+uv run python -m http.server 8765 --bind 127.0.0.1 --directory .tmp/demo-web
+```
+
+Open `http://127.0.0.1:8765/`. The ZIP contains the complete static site;
+production needs only Nginx. See the [delivery report](docs/21_DELIVERY_STATUS.md)
+and [deployment instructions](docs/15_DASHBOARD_DEPLOYMENT.md) for verification,
+staging, atomic activation, rollback, and remaining launch requirements.
+
 ## Data location (local, not committed)
 
 The configured raw CSV location is:

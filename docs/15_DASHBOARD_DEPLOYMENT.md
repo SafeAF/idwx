@@ -73,8 +73,13 @@ previous_build=$(readlink -f /srv/idwx/current)
 rsync -a --ignore-existing --exclude=/manifest.json "$previous_build/data/" "$new_build/data/"
 ```
 
-For the first deployment there is no previous build; skip that copy. Confirm
-the new manifest's referenced JSON and CSV exist, then perform HTTP checks
+For the first deployment there is no previous build; skip that copy. Run
+`idwx verify-web NEW_BUILD` on the batch machine after retained releases are
+merged; this rejects demo releases by default. Transfer a verified archive
+created with `idwx package-web NEW_BUILD --output delivery/site.zip`, or
+verify the final staged tree directly on a machine with idwx installed.
+Keep both the archive and verification receipt outside the document root.
+Then perform HTTP checks
 on a staging virtual host pointing to the new directory. Do not make edits
 inside immutable release directories. Retain the previous build path for
 rollback. Switch the document root symlink on the same filesystem:
@@ -153,11 +158,15 @@ $env:IDWX_NGINX = 'C:/path/to/nginx.exe'
 uv run pytest -q tests/test_nginx.py
 ```
 
-The test binds only to loopback, runs `nginx -t` on a generated HTTP test
-configuration, checks MIME/cache/error/denied-path behavior and manifest
-rollback, then stops its server. The production static locations passed with
-the official Windows Nginx package. Production TLS and redirect checks still
-require the deployment's actual certificates and hostname.
+The two tests bind only to loopback and stop their servers. They run
+`nginx -t`, check MIME/cache/error/denied-path behavior and manifest rollback,
+then exercise the full template's HTTP redirect and TLS 1.2/1.3 handshakes
+with an ephemeral certificate. OpenSSL must be installed or supplied through
+`IDWX_OPENSSL`; Git for Windows' OpenSSL is discovered automatically. The
+certificate is trusted only by that test client's explicit context; default
+trust correctly rejects it. No system trust configuration is changed.
+Both tests passed with the official Windows Nginx package. Production
+hostname, public trust, renewal and expiry still require live deployment checks.
 
 Browser preview was attempted but its access host was unavailable in the
 implementation session. A native Firefox fallback on November 11, 2026 was
@@ -191,7 +200,35 @@ The initial forecast audit and input leakage corrections are recorded in
 `16_FORECAST_CORRECTNESS_AUDIT.md`. Those synthetic regression checks do not
 establish forecast accuracy or calibration. No forecasts are published.
 
-The full suite now has 201 Python tests passing, one optional Nginx test
-skipped, and five frontend tests passing. The source-audit command and its
+The completion suite has 225 Python tests passing, two optional Nginx tests
+skipped in the default run, 17 frontend tests passing, and both Nginx tests
+passing separately. The source-audit command and its
 blocked workspace report are documented in `20_SOURCE_DATA_AUDIT.md`. Reports
 contain private paths/metadata and must remain outside the publication root.
+
+## Repeatable delivery checks
+
+With Python/uv, Node 24.15+ (24 series) or 26+, and pnpm 11.25.0 available:
+
+```powershell
+.venv/Scripts/python.exe scripts/verify.py
+# Include an installed Nginx for loopback HTTP/TLS verification:
+.venv/Scripts/python.exe scripts/verify.py --nginx C:/path/to/nginx.exe
+```
+
+The Python runner installs locked dependencies without frontend lifecycle
+scripts, runs full Ruff/Python/frontend checks, builds and verifies the demo
+archive, and checks wheel exports both extracted and installed in a fresh
+isolated environment. It uses workspace caches and short Windows fixture
+paths. `--node`, `--pnpm`, and `--offline` support local installations and
+cached operation. It does not alter PowerShell execution policy.
+Artifacts are `.tmp/verified-site`, `.tmp/delivery/idwx-demo-site.zip`, and
+`.tmp/delivery/wheels/`. These are synthetic, ignored by Git, and intended
+for preview/testing. Real deployment must use audited data and omit both
+`--demo` and `--allow-demo`.
+
+`.github/workflows/verify.yml` configures the same checks on Windows and
+Linux, with the optional Nginx smoke checks on Linux. It uploads only the
+demo ZIP and wheel. Action revisions, pnpm and dependencies are pinned.
+The workflow is configured but has not been run remotely in this session.
+See `21_DELIVERY_STATUS.md` for the launch checklist and current blockers.
