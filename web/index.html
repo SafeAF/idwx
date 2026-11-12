@@ -14,7 +14,7 @@
     <a class="brand" href="./" aria-label="IDWX Frost Almanac home"><span class="brand-mark" aria-hidden="true">✳</span><span>IDWX <span class="brand-divider">/</span> <span class="brand-name">Frost Almanac</span></span></a>
     <a href="#methodology" class="header-link">How to read the dates <span aria-hidden="true">↗</span></a>
   </header>
-  <main id="main" class="wrap">
+  <main id="main" class="wrap" tabindex="-1">
     <section class="intro" aria-labelledby="page-title">
       <p class="eyebrow">Idaho · Historical growing seasons</p>
       <h1 id="page-title">Every season has<br>a little history.</h1>
@@ -32,11 +32,16 @@
     <div id="dashboard" hidden>
       <section class="station-heading" aria-labelledby="station-title"><div><p class="eyebrow">The local record</p><h2 id="station-title"></h2><p id="station-meta" class="muted"></p></div><span id="year-badge" class="pill"></span></section>
       <section id="cards" class="cards" aria-label="Selected season"></section>
+      <section class="panel" aria-labelledby="baseline-title">
+        <div class="section-heading"><div><p class="eyebrow">What supports the typical dates</p><h2 id="baseline-title">The historical baseline</h2></div></div>
+        <p class="small muted">Date ranges describe confirmed events only. Complete years without an event, incomplete windows, and years without valid minima are excluded from date statistics. These counts describe this archive, not the probability of a freeze in a future year.</p>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Historical baseline dates and coverage"><table><caption id="baseline-caption"></caption><thead><tr><th scope="col">Window / baseline</th><th scope="col">Typical / P10–P90</th><th scope="col">Observed extremes</th><th scope="col">Confirmed years</th><th scope="col">Other baseline years</th></tr></thead><tbody id="baseline-rows"></tbody></table></div>
+      </section>
       <section class="panel history" aria-labelledby="history-title">
         <div class="section-heading"><div><p class="eyebrow">Patterns across the years</p><h2 id="history-title">Freeze-date history</h2></div><button id="download" class="button" type="button">Download this history <span aria-hidden="true">↓</span></button></div>
         <p class="muted">Confirmed dates by year. Shaded bands show the historical P10–P90 range; dashed lines mark the typical date (P50).</p>
         <div class="legend"><span><i class="dot spring"></i>Last spring freeze</span><span><i class="dot fall"></i>First fall freeze</span></div>
-        <div id="chart" class="chart"></div>
+        <div id="chart" class="chart" tabindex="0" role="region" aria-label="Freeze-date history chart"></div>
         <p id="history-caption" class="small muted"></p>
         <details class="history-details"><summary>View the accessible history table</summary><div class="table-scroll" tabindex="0" role="region" aria-label="Annual freeze history"><table><caption id="table-caption"></caption><thead><tr><th scope="col">Year</th><th scope="col">Last spring freeze</th><th scope="col">First fall freeze</th><th scope="col">Verified frost-free days</th></tr></thead><tbody id="history-rows"></tbody></table></div></details>
       </section>

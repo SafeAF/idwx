@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calendarDay, displayDate, dateParts, temperature, historicalText, historyCSV, releaseURL, validateRelease } from '../web/js/format.js';
+import { calendarDay, displayDate, dateParts, temperature, historicalText, historyCSV, releaseURL, validateRelease, baselineDetails } from '../web/js/format.js';
 
 test('date-only values retain their calendar day in every local timezone', () => {
   assert.equal(displayDate('2020-03-01'), 'Mar 1');
@@ -8,6 +8,25 @@ test('date-only values retain their calendar day in every local timezone', () =>
   assert.equal(calendarDay('2020-02-29'), 60);
   assert.equal(dateParts('2019-02-29'), null);
   assert.equal(displayDate(null), '—');
+});
+
+test('baseline coverage separates no-event and missing years and compares month/day across leap years', () => {
+  const records = [
+    [1999, 'observed', '1999-01-01'],
+    [2000, 'observed', '2000-02-29'],
+    [2001, 'observed', '2001-03-01'],
+    [2002, 'no_event_in_complete_window', null],
+    [2003, 'incomplete_window', null],
+    [2004, 'insufficient_data', null],
+    [2005, 'observed', '2005-12-31'],
+  ].map(([season_year, status, date]) => ({ season_year, last_spring_frost: { status, date } }));
+  assert.deepEqual(baselineDetails(records, 'last_spring_frost', { baseline_period: { start_year: 2000, end_year: 2004 } }), {
+    total: 5, confirmed: 2, noEvent: 1, incomplete: 1, unavailable: 1,
+    earliest: '2000-02-29', latest: '2001-03-01',
+  });
+  assert.deepEqual(baselineDetails(records, 'last_spring_frost', { baseline_period: { start_year: 2002, end_year: 2004 } }), {
+    total: 3, confirmed: 0, noEvent: 1, incomplete: 1, unavailable: 1, earliest: null, latest: null,
+  });
 });
 
 test('threshold conversion preserves exact -2 C Fahrenheit label and missing values', () => {

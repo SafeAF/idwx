@@ -1,4 +1,4 @@
-import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument } from './format.js';
+import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument, baselineDetails } from './format.js';
 import { renderHistory } from './charts.js';
 
 const $ = id => document.getElementById(id);
@@ -82,6 +82,26 @@ function render() {
   interval.append(node('p', days === null ? statusLabel(selected.interval.status) + '.' : 'Strictly between the two freeze dates, with valid daily minima above the threshold.', 'context'));
   interval.append(node('p', selected.interval.summer_freeze_observed ? 'July freeze observed at this threshold.' : 'A season interval requires complete daily coverage.', 'historical'));
   $('cards').replaceChildren(spring, fall, interval);
+  $('baseline-caption').textContent = `${doc.station.name}: historical baseline at ${temperature(state.threshold, state.unit)}. Counts apply separately to each seasonal window.`;
+  $('baseline-rows').replaceChildren(...EVENT_NAMES.map((name, index) => {
+    const distribution = summary[name];
+    const details = baselineDetails(records, name, distribution);
+    const row = node('tr');
+    const window = node('th', index === 0 ? 'Spring' : 'Fall'); window.scope = 'row';
+    window.append(node('span', `${distribution.baseline_period.start_year}–${distribution.baseline_period.end_year}`, 'cell-status'));
+    const dates = node('td', distribution.status === 'available' ? `Typical ${displayDate(`2000-${distribution.p50.month_day}`)}` : 'Insufficient history');
+    dates.append(node('span', distribution.status === 'available'
+      ? `P10–P90 ${displayDate(`2000-${distribution.p10.month_day}`)}–${displayDate(`2000-${distribution.p90.month_day}`)}`
+      : `${distribution.minimum_valid_years} confirmed years required`, 'cell-status'));
+    const extremes = node('td', details.earliest ? `${displayDate(details.earliest)}–${displayDate(details.latest)}` : 'No confirmed dates');
+    extremes.append(node('span', 'Earliest to latest month/day', 'cell-status'));
+    const included = node('td', `${details.confirmed}/${details.total} years`);
+    included.append(node('span', 'Confirmed events used for date statistics', 'cell-status'));
+    const excluded = node('td', `${details.noEvent} complete without an event`);
+    excluded.append(node('span', `${details.incomplete} incomplete · ${details.unavailable} without valid minima`, 'cell-status'));
+    row.append(window, dates, extremes, included, excluded);
+    return row;
+  }));
   renderHistory($('chart'), records, summary, state.year);
   $('history-caption').textContent = `${records.length} configured years · ${temperature(state.threshold, state.unit)} threshold · Missing and provisional events are omitted from the chart and retained in the table.`;
   $('table-caption').textContent = `${doc.station.name}: all configured years at ${temperature(state.threshold, state.unit)}. Selected year ${state.year}.`;

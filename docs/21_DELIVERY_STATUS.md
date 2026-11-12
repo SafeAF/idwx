@@ -1,8 +1,9 @@
 # Frost website delivery status — November 11, 2026
 
 The historical website implementation and synthetic delivery package are
-complete locally. A real-data production launch remains dependent on source
-files, access to the deployment host, and browser verification. This report
+complete locally. Deployment is deferred at the user's request. A real-data
+production launch remains dependent on source files, access to the deployment
+host, and browser verification. This report
 does not certify a live deployment or forecast accuracy.
 
 ## Deliverables
@@ -14,7 +15,9 @@ does not certify a live deployment or forecast accuracy.
   manifest replacement, fixed public assets, and installed-wheel support.
 - Buildless responsive dashboard with station/threshold/year/unit controls,
   shareable URLs, chart/table/CSV views, coverage and freshness details, and
-  explicit loading, error and unavailable states. Observed event dates and
+  explicit loading, error and unavailable states. The baseline table exposes
+  observed extremes and confirmed/no-event/incomplete/unavailable year counts.
+  Observed event dates and
   historical typical dates/ranges are distinguished. No predictions appear.
 - Independent package verification, synthetic-data guard, portable ZIP
   packaging, Nginx configuration, staging/activation/rollback instructions,
@@ -30,14 +33,14 @@ does not certify a live deployment or forecast accuracy.
 | 1: calculations | Conservative event/interval rules and synthetic regressions; private audit command | Obtain original station files; verify units, provenance, reporting days, coverage and hand-check real station-years |
 | 2: summaries and prediction validation | Reproducible historical quantiles and research correctness safeguards | Real chronological backtests, baseline skill, bias, interval coverage/width, calibration and publication criteria; forecasts remain excluded |
 | 3: data contract | Schema 1.0.0, pinned releases, JSON/CSV, atomic publication, independent verifier and portable archive | Generate a real release only after source review |
-| 4: dashboard | Working modules; 17 automated utility/DOM checks against synthetic exports | Actual desktop/mobile appearance, keyboard behavior, native downloads and recovery in a supported browser |
+| 4: dashboard | Working modules; 20 automated utility/DOM checks against synthetic exports | Actual desktop/mobile appearance, keyboard behavior, native downloads and recovery in a supported browser |
 | 5: deployment | Nginx HTTP/TLS template and loopback checks, staging/rollback procedures | Reach proxy1, identify public domain/document root, preserve existing sites, install valid certificates, deploy and verify public HTTPS; choose schedule after source cadence is known |
 | 6: delivery | Full local regressions, source and deploy documentation, verified demo ZIP and wheel | Run configured CI remotely; finish live browser, source and production checks |
 
 ## Verification evidence
 
 The completion pass runs 225 Python tests successfully, with the two optional
-Nginx tests skipped in the default run. Seventeen frontend tests pass.
+Nginx tests skipped in the default run. Twenty frontend tests pass.
 Both optional Nginx tests pass separately with official Windows Nginx 1.30.6.
 The latter cover MIME types, cache policy, missing-file responses, denied
 staging paths, manifest rollback, HTTP-to-HTTPS redirects, and TLS 1.2/1.3.
@@ -69,6 +72,7 @@ Generated, Git-ignored deliverables:
 | `.tmp/delivery/idwx-demo-site.zip` | Verified portable preview, including JSON/CSV |
 | `.tmp/delivery/wheels/` | Python wheel including frontend assets |
 | `.tmp/final-verification.log` | Local verification output |
+| `.tmp/baseline-verification.log` | Baseline-table follow-up verification |
 | `.tmp/delivery/SHA256SUMS.txt` | Final ZIP/wheel byte checksums |
 
 The ZIP can be extracted into a dedicated static document root. Python and
@@ -94,7 +98,8 @@ behavior. No screenshot-based or real-browser verification is claimed.
 check with existing credentials and strict host-key verification failed before
 connecting: `Could not resolve hostname proxy1: No such host is known.` No SSH
 alias is configured in this workspace's user profile. An address/full hostname,
-SSH username, site domain and weather-data path have been requested. No remote
+SSH username, site domain and weather-data path remain unknown. The user
+subsequently deferred deployment so local development could continue. No remote
 configuration, certificate, data upload or activation has occurred.
 
 **Forecasts:** No real-data accuracy, chronological baseline comparison,

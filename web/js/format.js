@@ -42,6 +42,21 @@ export function historicalText(summary) {
   return `Typical ${displayDate(`2000-${summary.p50.month_day}`)} · P10–P90 ${displayDate(`2000-${summary.p10.month_day}`)}–${displayDate(`2000-${summary.p90.month_day}`)} · ${summary.valid_year_count} years`;
 }
 
+export function baselineDetails(records, eventName, summary) {
+  const period = summary.baseline_period;
+  const events = records.filter(row => row.season_year >= period.start_year && row.season_year <= period.end_year)
+    .map(row => row[eventName]);
+  const dates = events.filter(event => event.status === 'observed').map(event => event.date)
+    .sort((a, b) => calendarDay(a) - calendarDay(b));
+  return {
+    total: events.length, confirmed: dates.length,
+    noEvent: events.filter(event => event.status === 'no_event_in_complete_window').length,
+    incomplete: events.filter(event => event.status === 'incomplete_window').length,
+    unavailable: events.filter(event => event.status === 'insufficient_data').length,
+    earliest: dates[0] ?? null, latest: dates.at(-1) ?? null,
+  };
+}
+
 export function historyCSV(document, records) {
   const rows = records.map(record => {
     const row = { schema_version: document.schema_version, release_id: document.release_id,

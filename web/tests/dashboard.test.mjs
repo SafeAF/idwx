@@ -97,6 +97,48 @@ test('shared URL restores station, threshold, season, units and synthetic notice
   assert.equal($('full-download').pathname, '/almanac/' + manifest.history_csv_url);
 });
 
+test('baseline table shows exported extremes and included/excluded years at the selected threshold', async t => {
+  const { $, change } = await dashboard(t);
+  const verify = threshold => {
+    const doc = stationDoc('alpha');
+    const summary = doc.summaries.find(row => row.threshold_c === threshold);
+    const rows = [...$('baseline-rows').children];
+    for (const [index, name] of ['last_spring_frost', 'first_fall_frost'].entries()) {
+      const distribution = summary[name], cells = rows[index].children;
+      assert.match(cells[0].textContent, /2000–2022/);
+      assert.ok(cells[2].textContent.includes(new Intl.DateTimeFormat('en-US', {
+        month: 'short', day: 'numeric', timeZone: 'UTC',
+      }).format(new Date(`2000-${distribution.earliest.month_day}T00:00:00Z`))));
+      assert.ok(cells[3].textContent.startsWith(`${distribution.valid_year_count}/23 years`));
+      assert.ok(cells[4].textContent.startsWith(`${distribution.status_counts.no_event_in_complete_window ?? 0} complete without an event`));
+      assert.ok(cells[4].textContent.includes(`${distribution.status_counts.incomplete_window ?? 0} incomplete`));
+    }
+  };
+  verify(0);
+  change('threshold', '-2'); verify(-2);
+  assert.match($('baseline-caption').textContent, /-2 °C/);
+  const before = $('baseline-rows').textContent;
+  change('year', '2021');
+  assert.equal($('baseline-rows').textContent, before);
+});
+
+test('a short baseline shows observed extremes without inventing typical dates', async t => {
+  const doc = stationDoc('alpha');
+  for (const summary of doc.summaries) for (const name of ['last_spring_frost', 'first_fall_frost']) {
+    Object.assign(summary[name], {
+      baseline_period: { start_year: 2000, end_year: 2001 }, status: 'insufficient_history',
+      valid_year_count: 2, p10: null, p50: null, p90: null,
+    });
+  }
+  const { $ } = await dashboard(t, { route: async url => url.pathname.endsWith('/alpha.json') ? { ok: true, json: async () => doc } : null });
+  for (const row of $('baseline-rows').children) {
+    assert.match(row.children[0].textContent, /2000–2001/);
+    assert.match(row.children[1].textContent, /Insufficient history/);
+    assert.match(row.children[2].textContent, /Earliest to latest/);
+    assert.match(row.children[3].textContent, /^2\/2 years/);
+  }
+});
+
 test('controls render no-event, incomplete, verified and exact threshold states', async t => {
   const { $, change, window } = await dashboard(t);
   change('year', '2019');
@@ -177,6 +219,9 @@ test('semantic controls, focus targets and table alternatives remain available',
     $(id).focus(); assert.equal(window.document.activeElement, $(id));
   }
   assert.equal($('status').getAttribute('role'), 'status');
+  assert.equal($('main').tabIndex, -1);
+  assert.equal($('chart').tabIndex, 0);
+  assert.ok(window.document.querySelector('[aria-label="Historical baseline dates and coverage"] thead').textContent.includes('P10–P90'));
   assert.equal($('chart').querySelector('svg').getAttribute('role'), 'img');
   assert.ok($('chart').querySelector('#chart-desc').textContent.includes('history table'));
   assert.ok(window.document.querySelector('a.skip-link[href="#main"]'));
@@ -210,6 +255,8 @@ test('entirely unavailable history has an empty chart and accessible status tabl
   const { $ } = await dashboard(t, { route: async url => url.pathname.endsWith('/alpha.json') ? { ok: true, json: async () => doc } : null });
   assert.match($('chart').textContent, /No confirmed dates/);
   assert.match($('cards').textContent, /Insufficient history/);
+  assert.match($('baseline-rows').textContent, /No confirmed dates/);
+  assert.match($('baseline-rows').textContent, /0\/1 years/);
   assert.equal($('history-rows').children.length, 1);
 });
 

@@ -10,7 +10,12 @@ third-party scripts, external fonts, or weather API calls are required.
 The dashboard supports station/threshold/year selection, Celsius/Fahrenheit,
 shareable URL parameters, observed dates alongside historical typical dates,
 P10-P90 chart bands, an accessible history table, selected-season coverage,
-provisional candidates, and downloads. The year selector controls summary
+provisional candidates, and downloads. A historical baseline table shows
+earliest/latest confirmed month/day, typical dates and P10-P90 ranges, and
+separate counts for confirmed events, complete no-event windows, incomplete
+windows and years without valid minima. Counts use only the published baseline
+and selected threshold; they are not future freeze probabilities. Short
+baselines retain observed extremes but do not acquire unsupported quantiles. The year selector controls summary
 cards and details; the history chart/table and filtered download retain all
 years for the selected station and threshold. A second download includes all
 stations and thresholds from the pinned release.
@@ -178,10 +183,11 @@ native download behavior still need live browser verification. No screenshots
 or claims of browser-tested behavior are provided.
 
 DOM integration tests now execute the actual dashboard modules against
-exported synthetic fixtures using jsdom. Seventeen frontend tests cover URL
+exported synthetic fixtures using jsdom. Twenty frontend tests cover URL
 restoration/normalization, controls and units, all data states, chart/table/CSV
 agreement, malformed/mixed releases, failed requests and recovery, late-response
-races, semantic controls and focus targets. These tests do not render layout
+races, baseline filtering and missingness counts, observed extremes with
+insufficient history, semantic controls and focus targets. These tests do not render layout
 or replace desktop/mobile browser checks. Install test-only dependencies with
 the pinned pnpm version (Node 24.15+ in the 24 series, or Node 26+):
 
@@ -201,7 +207,7 @@ The initial forecast audit and input leakage corrections are recorded in
 establish forecast accuracy or calibration. No forecasts are published.
 
 The completion suite has 225 Python tests passing, two optional Nginx tests
-skipped in the default run, 17 frontend tests passing, and both Nginx tests
+skipped in the default run, 20 frontend tests passing, and both Nginx tests
 passing separately. The source-audit command and its
 blocked workspace report are documented in `20_SOURCE_DATA_AUDIT.md`. Reports
 contain private paths/metadata and must remain outside the publication root.
