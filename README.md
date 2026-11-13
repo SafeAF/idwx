@@ -13,7 +13,7 @@ This is seasonal / event forecasting for agriculture.
 ## Static frost dashboard delivery
 
 The historical dashboard, exporter, portable package verifier, Nginx template,
-and regression suite are implemented. The website shows a current-year
+and regression suite are implemented. The website shows a planning-year
 historical climatology projection: P50 is the projected date and P10–P90 is
 the historical range. It does not publish the repository's research model
 predictions or use current weather. The repository includes a compact daily
@@ -137,7 +137,7 @@ Without local weather data, generate explicitly labeled synthetic examples:
 uv run idwx export-web --demo --output .tmp/demo-web
 ```
 
-The export includes the complete buildless dashboard: a current-year
+The export includes the complete buildless dashboard: a planning-year
 climatology projection, station/threshold/year controls, unit switching,
 confirmed dates and historical ranges, coverage, an accessible history table,
 and CSV downloads. Open it through an HTTP server:

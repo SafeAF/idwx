@@ -2,7 +2,7 @@
 
 This implements historical summaries from Phase 2 and the export contract of
 Phase 3 in `12_FROST_STATIC_WEBSITE_PLAN.md`. It does not publish model
-prediction records. The browser derives a clearly labeled current-year
+prediction records. The browser derives a clearly labeled planning-year
 climatology projection from the historical summaries. The exporter now also
 installs the dashboard assets; see
 `15_DASHBOARD_DEPLOYMENT.md` for preview, deployment, and verification.
@@ -149,12 +149,16 @@ typical historical date. Spring P90 describes a later last freeze; fall P10
 describes an earlier first freeze. These are not forecast uncertainty bounds
 or guarantees for an individual season.
 
-## Current-year climatology projection
+## Planning-year climatology projection
 
-The dashboard uses the station's IANA timezone to select the current calendar
-year. For each threshold, it presents historical P50 as the projected spring
-and fall date and historical P10–P90 as the accompanying range. When both
-medians exist, it also shows the strictly intervening calendar-day count.
+The dashboard uses the station's IANA timezone and the latest archived season
+to select a planning year. It uses the current local year while the archive is
+older; once the archive contains the current season, it advances to the next
+year. Thus the Twin Falls archive containing partial 2026 records presents a
+2027 projection. For each threshold, it presents historical P50 as the
+projected spring and fall date and historical P10–P90 as the accompanying
+range. When both medians exist, it also shows the strictly intervening
+calendar-day count.
 
 This is a browser-derived historical baseline. It does not add forecast fields
 to JSON/CSV, use observations after the archive cutoff, ingest current weather,

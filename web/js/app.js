@@ -1,4 +1,4 @@
-import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument, baselineDetails, yearInTimeZone, climatologyProjection } from './format.js';
+import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument, baselineDetails, planningProjectionYear, climatologyProjection } from './format.js';
 import { renderHistory } from './charts.js';
 
 const $ = id => document.getElementById(id);
@@ -54,7 +54,7 @@ function card(title, event, summary, className) {
   article.append(node('p', 'Historical · ' + historicalText(summary), 'historical'));
   return article;
 }
-function projectionCard(title, projection, className) {
+function projectionCard(title, projection, className, projectionYear) {
   const article = node('article', undefined, `projection-card ${className}`);
   article.append(node('h3', title));
   if (!projection) {
@@ -62,8 +62,8 @@ function projectionCard(title, projection, className) {
     article.append(node('p', 'The historical baseline does not contain enough confirmed events.', 'projection-context'));
     return article;
   }
-  article.append(node('p', displayDate(`2000-${projection.p50}`), 'projection-value'));
-  article.append(node('p', `Historical P10–P90 · ${displayDate(`2000-${projection.p10}`)}–${displayDate(`2000-${projection.p90}`)}`, 'projection-range'));
+  article.append(node('p', displayDate(`${projectionYear}-${projection.p50}`, true), 'projection-value'));
+  article.append(node('p', `Historical P10–P90 · ${displayDate(`${projectionYear}-${projection.p10}`, true)}–${displayDate(`${projectionYear}-${projection.p90}`, true)}`, 'projection-range'));
   article.append(node('p', `${projection.confirmedYears} confirmed years · baseline ${projection.baseline.start_year}–${projection.baseline.end_year}`, 'projection-context'));
   return article;
 }
@@ -79,7 +79,7 @@ function render() {
   if (!selected) throw new Error('The selected season is missing from this release.');
   const summary = doc.summaries.find(s => s.threshold_c === state.threshold);
   if (!summary) throw new Error('Historical summaries are missing from this release.');
-  const projectionYear = yearInTimeZone(doc.station.timezone);
+  const projectionYear = planningProjectionYear(doc);
   const projection = climatologyProjection(summary, projectionYear);
   if (!projection) throw new Error('The historical projection could not be calculated.');
   options('threshold', doc.thresholds_c.map(t => [t, `${temperature(t, state.unit)} or colder`]), state.threshold);
@@ -91,8 +91,8 @@ function render() {
   $('year-badge').textContent = `Archive view · ${state.year}`;
   $('projection-title').textContent = `${projectionYear} frost projection`;
   $('projection-copy').textContent = `Historical climatology for ${doc.station.name} at ${temperature(state.threshold, state.unit)} or colder. The projected date is the historical median; the range shows P10–P90 of confirmed events.`;
-  const springProjection = projectionCard('Last spring freeze', projection.spring, 'spring-projection');
-  const fallProjection = projectionCard('First fall freeze', projection.fall, 'fall-projection');
+  const springProjection = projectionCard('Last spring freeze', projection.spring, 'spring-projection', projectionYear);
+  const fallProjection = projectionCard('First fall freeze', projection.fall, 'fall-projection', projectionYear);
   const spanProjection = node('article', undefined, 'projection-card span-projection');
   spanProjection.append(node('h3', 'Projected frost-free span'));
   spanProjection.append(node('p', projection.frostFreeDays === null ? 'Not available' : `About ${projection.frostFreeDays} days`, `projection-value ${projection.frostFreeDays === null ? 'text-value' : ''}`));
@@ -167,7 +167,7 @@ function render() {
   const archiveAge = lastValid ? (Date.now() - Date.parse(lastValid + 'T00:00:00Z')) / 86400000 : Infinity;
   $('notice').hidden = false;
   $('notice').textContent = doc.data_kind === 'synthetic_demo'
-    ? 'Synthetic demonstration · These dates and the current-year projection are invented examples. Do not use them for planting decisions.'
+    ? 'Synthetic demonstration · These dates and the planning-year projection are invented examples. Do not use them for planting decisions.'
     : archiveAge > 730 ? `${doc.data_kind === 'historical_reanalysis' ? 'Historical reanalysis archive' : 'Historical archive'} · The last valid minimum is ${lastValid ?? 'unavailable'}. The ${projectionYear} projection is historical climatology only and does not use current conditions.`
     : `Historical records · The ${projectionYear} projection is historical climatology only, not a live weather forecast.`;
   $('dashboard').hidden = false;

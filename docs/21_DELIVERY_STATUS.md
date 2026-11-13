@@ -17,7 +17,7 @@ accuracy.
 - Schema-versioned SQLite storage with raw-source fingerprinting, atomic
   rebuild, strict one-station configuration matching, and a checked-in
   Twin Falls ERA5/Oikolab daily dataset refreshed through November 7, 2026.
-- Buildless responsive dashboard with a current-year historical climatology
+- Buildless responsive dashboard with a planning-year historical climatology
   panel, station/threshold/year/unit controls, shareable URLs, chart/table/CSV
   views, coverage and freshness details, and explicit loading, error and
   unavailable states. The panel exposes P50 projected dates, P10–P90

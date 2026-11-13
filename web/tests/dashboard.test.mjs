@@ -91,6 +91,7 @@ test('shared URL restores station, threshold, season, units and synthetic notice
   assert.match($('projection-title').textContent, /^\d{4} frost projection$/);
   assert.match($('projection-copy').textContent, /historical median/i);
   assert.equal($('projection-cards').children.length, 3);
+  assert.match($('projection-cards').textContent, new RegExp($('projection-title').textContent.slice(0, 4)));
   assert.match($('projection-cards').textContent, /Historical P10–P90/);
   assert.match($('projection-cards').textContent, /Projected frost-free span/);
   assert.match(window.document.querySelector('.projection-disclaimer').textContent, /not a guarantee/i);

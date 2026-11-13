@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calendarDay, displayDate, dateParts, temperature, historicalText, historyCSV, releaseURL, validateRelease, baselineDetails, yearInTimeZone, climatologyProjection } from '../web/js/format.js';
+import { calendarDay, displayDate, dateParts, temperature, historicalText, historyCSV, releaseURL, validateRelease, baselineDetails, yearInTimeZone, planningProjectionYear, climatologyProjection } from '../web/js/format.js';
 
 test('date-only values retain their calendar day in every local timezone', () => {
   assert.equal(displayDate('2020-03-01'), 'Mar 1');
@@ -62,6 +62,17 @@ test('climatology projection uses station-local year, historical median, and P10
     last_spring_frost: { status: 'insufficient_history' },
     first_fall_frost: { status: 'insufficient_history' },
   }, 2026).frostFreeDays, null);
+});
+
+test('planning projection advances when the archive already contains the current season', () => {
+  const now = new Date('2026-11-13T19:00:00Z');
+  const document = {
+    station: { timezone: 'America/Boise' },
+    annual: [{ season_year: 2025 }, { season_year: 2026 }],
+  };
+  assert.equal(planningProjectionYear(document, now), 2027);
+  document.annual = [{ season_year: 2022 }];
+  assert.equal(planningProjectionYear(document, now), 2026);
 });
 
 test('all data references are pinned to the same release and origin', () => {

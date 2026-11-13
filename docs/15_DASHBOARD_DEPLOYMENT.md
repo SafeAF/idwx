@@ -7,12 +7,13 @@ The exporter installs these assets alongside versioned JSON/CSV, both from
 this checkout and from an installed Python wheel. No frontend build step,
 third-party scripts, external fonts, or weather API calls are required.
 
-The dashboard supports a current-year historical climatology projection,
+The dashboard supports a planning-year historical climatology projection,
 station/threshold/year selection, Celsius/Fahrenheit, shareable URL parameters,
 observed dates alongside historical typical dates, P10-P90 chart bands, an
 accessible history table, selected-season coverage, provisional candidates,
 and downloads. The projection uses P50 as the central date, P10–P90 as the
-historical range, and the station timezone for the current year. A historical
+historical range, the station timezone, and the next season after the latest
+archived year when that archive already contains the current season. A historical
 baseline table shows
 earliest/latest confirmed month/day, typical dates and P10-P90 ranges, and
 separate counts for confirmed events, complete no-event windows, incomplete
@@ -210,10 +211,10 @@ the production website remains buildless.
 The initial forecast audit and input leakage corrections are recorded in
 `16_FORECAST_CORRECTNESS_AUDIT.md`. Those synthetic regression checks do not
 establish forecast accuracy or calibration. No model forecasts are published;
-the current-year panel is the historical baseline only.
+the planning-year panel is the historical baseline only.
 
-The completion suite has 225 Python tests passing, two optional Nginx tests
-skipped in the default run, 20 frontend tests passing, and both Nginx tests
+The completion suite has 233 Python tests passing, two optional Nginx tests
+skipped in the default run, 22 frontend tests passing, and both Nginx tests
 passing separately. The source-audit command and its
 blocked workspace report are documented in `20_SOURCE_DATA_AUDIT.md`. Reports
 contain private paths/metadata and must remain outside the publication root.

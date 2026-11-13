@@ -53,6 +53,14 @@ export function yearInTimeZone(timeZone, now = new Date()) {
   }
 }
 
+export function planningProjectionYear(document, now = new Date()) {
+  const currentYear = yearInTimeZone(document?.station?.timezone, now);
+  const archiveYears = Array.isArray(document?.annual)
+    ? document.annual.map(row => row?.season_year).filter(Number.isInteger) : [];
+  const nextArchiveYear = archiveYears.length ? Math.max(...archiveYears) + 1 : currentYear;
+  return Math.max(currentYear, nextArchiveYear);
+}
+
 export function climatologyProjection(summary, year) {
   const project = distribution => {
     if (!distribution || distribution.status !== 'available') return null;
