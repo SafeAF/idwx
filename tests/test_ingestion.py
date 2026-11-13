@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from idwx.config import StationMeta, load_config
-from idwx.io import _compute_local_date, ingest_era5_hourly_csv
+from idwx.io import _compute_local_date, ingest_era5_hourly_csv, resolve_source_station
 
 
 def write_csv(tmp_path, timestamps):
@@ -25,6 +25,13 @@ def test_station_timezone_override(tmp_path):
     station = StationMeta("twin_falls", "Twin Falls", 42.5629, -114.4609, timezone="America/Los_Angeles")
     _, daily, _ = ingest_era5_hourly_csv(path, cfg, [station])
     assert daily.iloc[0].date == pd.Timestamp("2019-12-31")
+
+
+def test_normal_archive_filename_preserves_negative_longitude(tmp_path):
+    path = tmp_path / "42.4634--114.4975-1980-01-01-2022-12-31.csv"
+    station = StationMeta("twin_falls", "Twin Falls", 42.4634, -114.4975)
+    station_id, matched, lat, lon = resolve_source_station(path, [station])
+    assert (station_id, matched, lat, lon) == ("twin_falls", station, 42.4634, -114.4975)
 
 
 def test_subhourly_readings_cannot_inflate_coverage(tmp_path):

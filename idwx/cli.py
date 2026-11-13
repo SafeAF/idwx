@@ -143,6 +143,31 @@ def data_build(
     typer.echo(json.dumps({"stations_written": written, "count": len(written)}))
 
 
+@data_app.command("build-sqlite")
+def data_build_sqlite(
+    source: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),  # noqa: B008 - Typer declares CLI arguments in defaults.
+    station_id: str = typer.Option("twin_falls", "--station"),
+    config: str = typer.Option("configs/idaho.yml", "--config"),
+    output: Path | None = typer.Option(None, "--output"),  # noqa: B008 - Typer declares CLI options in defaults.
+) -> None:
+    """Build an application-ready daily SQLite database from one hourly source."""
+    from idwx.sqlite_store import build_sqlite_database
+
+    cfg = load_config(config)
+    matches = [station for station in load_stations(cfg.stations_file)
+               if station.station_id == station_id]
+    if len(matches) != 1:
+        raise typer.BadParameter(f"Unknown or duplicate configured station: {station_id}")
+    destination = output or cfg.database_path
+    if destination is None:
+        raise typer.BadParameter("Supply --output or configure database_path")
+    try:
+        report = build_sqlite_database(cfg, matches[0], source, destination)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(report))
+
+
 @dataset_app.command("build")
 def dataset_build(
     target: str = typer.Option(..., "--target"),

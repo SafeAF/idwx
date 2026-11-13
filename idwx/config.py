@@ -34,6 +34,7 @@ class Config:
     models: dict[str, dict[str, Any]]
     hourly_min_coverage: int = 18
     station_windows: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
+    database_path: Path | None = None
 
 
 DEFAULT_WINDOWS = {
@@ -57,6 +58,8 @@ def load_config(path: str | Path) -> Config:
     models_dir = _as_repo_path(raw.get("models_dir", "models"))
     reports_dir = _as_repo_path(raw.get("reports_dir", "reports"))
     stations_file = _as_repo_path(raw.get("stations_file", "configs/stations.yml"))
+    database_value = raw.get("database_path")
+    database_path = _as_repo_path(database_value) if database_value else None
 
     return Config(
         data_root=data_root,
@@ -73,6 +76,7 @@ def load_config(path: str | Path) -> Config:
         models=raw.get("models", {}),
         hourly_min_coverage=int(raw.get("hourly_min_coverage", 18)),
         station_windows=raw.get("station_windows", {}),
+        database_path=database_path,
     )
 
 

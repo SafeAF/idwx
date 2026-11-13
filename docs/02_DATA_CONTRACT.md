@@ -8,8 +8,12 @@ The configured raw CSV location is:
 
 `~/historical_weather_data-1980-2022/idaho/`
 
-This directory is **not committed** and is currently absent in the implementation
-workspace. Real station availability and source conventions remain unverified.
+Raw hourly files are **not committed**. The selected Twin Falls source is
+available in the sibling `idaho-weather-data/archive` checkout and is reduced
+to the committed, application-ready `data/idwx.sqlite3`. The configured raw
+root remains the optional bulk Parquet/audit input; `idwx data build-sqlite`
+instead takes one explicit source path so unrelated Idaho stations cannot be
+included accidentally.
 
 ## Supported input types
 
@@ -37,10 +41,10 @@ Example:
 stations:
   - station_id: twin_falls
     name: Twin Falls
-    lat: 42.5629
-    lon: -114.4609
-    elevation_m: 1134
-    source: NOAA
+    lat: 42.4634
+    lon: -114.4975
+    elevation_m: 1318.38
+    source: Oikolab ERA5 reanalysis
 ~~~
 
 ### Station ID rules

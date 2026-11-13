@@ -217,7 +217,9 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     _keys(manifest, COMMON | {"generated_at_utc", "stations_url", "history_csv_url", "source_coverage", "files"}, "manifest")
     release = manifest["release_id"]
     _require(manifest["schema_version"] == SCHEMA_VERSION and isinstance(release, str) and re.fullmatch(RELEASE_ID, release), "Unsupported schema or release ID")
-    _require(manifest["data_kind"] in {"synthetic_demo", "historical_observations"}, "Unsupported data kind")
+    _require(manifest["data_kind"] in {
+        "synthetic_demo", "historical_observations", "historical_reanalysis",
+    }, "Unsupported data kind")
     _require(allow_demo or manifest["data_kind"] != "synthetic_demo", "Synthetic data requires explicit --allow-demo")
     _require(isinstance(manifest["methodology"], str), "Missing methodology")
     _require(isinstance(manifest["generated_at_utc"], str), "Missing generation timestamp")

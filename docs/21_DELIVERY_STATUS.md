@@ -1,10 +1,11 @@
-# Frost website delivery status — November 11, 2026
+# Frost website delivery status — November 13, 2026
 
-The historical website implementation and synthetic delivery package are
-complete locally. Deployment is deferred at the user's request. A real-data
-production launch remains dependent on source files, access to the deployment
-host, and browser verification. This report
-does not certify a live deployment or forecast accuracy.
+The historical website now has a committed, Twin Falls-only daily SQLite
+database and can produce a verified real-data deployment package from a clean
+checkout. Deployment is still deferred. A production launch remains dependent
+on access to the deployment host, manual source review, and browser
+verification. This report does not certify a live deployment or forecast
+accuracy.
 
 ## Deliverables
 
@@ -13,6 +14,9 @@ does not certify a live deployment or forecast accuracy.
   overrides, strict hourly ingestion, and a private source/cache audit.
 - Versioned JSON/CSV exporter with immutable content-hashed releases, atomic
   manifest replacement, fixed public assets, and installed-wheel support.
+- Schema-versioned SQLite storage with raw-source fingerprinting, atomic
+  rebuild, strict one-station configuration matching, and a checked-in
+  1980–2022 Twin Falls ERA5/Oikolab daily dataset.
 - Buildless responsive dashboard with station/threshold/year/unit controls,
   shareable URLs, chart/table/CSV views, coverage and freshness details, and
   explicit loading, error and unavailable states. The baseline table exposes
@@ -30,17 +34,20 @@ does not certify a live deployment or forecast accuracy.
 
 | Primary plan phase | Implemented and verified locally | External or data-dependent gate |
 | --- | --- | --- |
-| 1: calculations | Conservative event/interval rules and synthetic regressions; private audit command | Obtain original station files; verify units, provenance, reporting days, coverage and hand-check real station-years |
+| 1: calculations | Conservative event/interval rules, private audit command, and reproducible Twin Falls daily SQLite build from the original hourly source | Complete manual units, provenance, reporting-day, coverage, and representative station-year review |
 | 2: summaries and prediction validation | Reproducible historical quantiles and research correctness safeguards | Real chronological backtests, baseline skill, bias, interval coverage/width, calibration and publication criteria; forecasts remain excluded |
-| 3: data contract | Schema 1.0.0, pinned releases, JSON/CSV, atomic publication, independent verifier and portable archive | Generate a real release only after source review |
+| 3: data contract | Schema 1.0.0, pinned releases, JSON/CSV, atomic publication, independent verifier, portable archive, and verified Twin Falls real export | Treat manual source review as separate acceptance evidence |
 | 4: dashboard | Working modules; 20 automated utility/DOM checks against synthetic exports | Actual desktop/mobile appearance, keyboard behavior, native downloads and recovery in a supported browser |
 | 5: deployment | Nginx HTTP/TLS template and loopback checks, staging/rollback procedures | Reach proxy1, identify public domain/document root, preserve existing sites, install valid certificates, deploy and verify public HTTPS; choose schedule after source cadence is known |
-| 6: delivery | Full local regressions, source and deploy documentation, verified demo ZIP and wheel | Run configured CI remotely; finish live browser, source and production checks |
+| 6: delivery | Full local regressions, source/deploy documentation, and CI configuration for real and demo ZIPs plus wheel | Run configured CI remotely; finish live browser, source and production checks |
 
 ## Verification evidence
 
-The completion pass runs 225 Python tests successfully, with the two optional
-Nginx tests skipped in the default run. Twenty frontend tests pass.
+The Twin Falls integration pass runs 229 Python tests successfully, with the
+two optional Nginx tests skipped in the default run. A clean rebuild from the
+80,044,940-byte source is byte-identical to the committed database. A real
+export verifies successfully with one station, 86 annual threshold records,
+and no forecasts. The prior completion pass ran twenty frontend tests.
 Both optional Nginx tests pass separately with official Windows Nginx 1.30.6.
 The latter cover MIME types, cache policy, missing-file responses, denied
 staging paths, manifest rollback, HTTP-to-HTTPS redirects, and TLS 1.2/1.3.
@@ -70,6 +77,7 @@ Generated, Git-ignored deliverables:
 | --- | --- |
 | `.tmp/verified-site/` | Complete static synthetic preview |
 | `.tmp/delivery/idwx-demo-site.zip` | Verified portable preview, including JSON/CSV |
+| `.tmp/delivery/idwx-twin-falls-site.zip` | Verified real Twin Falls deployment package produced by CI |
 | `.tmp/delivery/wheels/` | Python wheel including frontend assets |
 | `.tmp/final-verification.log` | Local verification output |
 | `.tmp/baseline-verification.log` | Baseline-table follow-up verification |
@@ -81,12 +89,11 @@ visible; do not represent this example as actual Idaho observations.
 
 ## Precise unresolved inputs
 
-**Source data:** The configured
-`C:/Users/kerrc/historical_weather_data-1980-2022/idaho` directory is absent.
-The private `.tmp/data-audit.json` is blocked with zero source files.
-Targeted checks of likely user/download/document/data locations found no
-matching source directory; this was not an exhaustive disk/network search.
-Local audit reports contain paths/metadata and stay outside the public root.
+**Source data:** The selected Twin Falls hourly source exists in the sibling
+`idaho-weather-data/archive` checkout and its exact filename, size, and SHA-256
+are stored in the database and `data/README.md`. Only the derived daily SQLite
+file is committed. Provider/retrieval history, reporting-day assumptions, and
+representative-year results still require manual acceptance review.
 
 **Browser:** The supported browser inventory is empty and its access host
 reports unavailable. The earlier native Firefox attempt was stopped by the
@@ -109,8 +116,9 @@ depend on completing this subsequent research release.
 
 ## Launch sequence after the inputs arrive
 
-1. Audit original sources privately, resolve every provenance/reporting-day
-   question, rebuild caches and hand-check representative real station-years.
+1. Review the recorded original source privately, resolve every
+   provenance/reporting-day question, and hand-check representative real
+   station-years against the committed daily database.
 2. Export into a new real-data staging root, verify without `--allow-demo`,
    retain compatible real releases and package outside the document root.
 3. Inspect proxy1's existing configuration and certificates, choose the

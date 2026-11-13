@@ -142,6 +142,7 @@ See `19_FORECAST_DATE_POLICY.md` for date conversion and paired date metrics.
 - cache_dir
 - models_dir
 - reports_dir
+- database_path
 - stations
 - frost_thresholds
 - windows
@@ -161,3 +162,16 @@ public field/file allowlists, summary recomputation, and CSV consistency.
 Packaging verifies the extracted ZIP before replacing the destination and
 prints its SHA-256. A successful result is package consistency, not source
 provenance certification. See `14_WEB_DATA_CONTRACT.md` for the exact scope.
+
+## Build the checked-in Twin Falls database
+
+```powershell
+uv run idwx data build-sqlite SOURCE_CSV --station twin_falls
+```
+
+The command accepts one explicit hourly ERA5-style source, validates that its
+filename coordinate maps to the configured station, aggregates local-calendar
+daily records, stores the source fingerprint and aggregation metadata, runs a
+SQLite integrity check, and atomically replaces `database_path`. Use `--output`
+to verify a candidate without replacing the configured database. Raw source
+CSVs are not committed.

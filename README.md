@@ -14,8 +14,23 @@ This is seasonal / event forecasting for agriculture.
 
 The historical dashboard, exporter, portable package verifier, Nginx template,
 and regression suite are implemented. Predictions remain research-only and
-are excluded from the website. The available demonstration uses synthetic
-data; real-data publication requires a reviewed source audit.
+are excluded from the website. The repository includes a compact daily SQLite
+database for the Twin Falls ERA5/Oikolab archive, so a real-data static site
+can be built without copying the private 80 MB hourly source to the deployment
+host.
+
+```powershell
+uv sync --locked
+uv run idwx export-web --output .tmp/twin-falls-web
+uv run idwx verify-web .tmp/twin-falls-web
+uv run idwx package-web .tmp/twin-falls-web --output .tmp/delivery/idwx-twin-falls-site.zip
+```
+
+The resulting ZIP is the deployable static application and contains the
+generated Twin Falls JSON/CSV. The checked-in database remains the canonical
+deployment input and is not served directly by Nginx.
+
+For an explicitly synthetic demonstration instead:
 
 ```powershell
 uv sync --locked
@@ -30,30 +45,35 @@ production needs only Nginx. See the [delivery report](docs/21_DELIVERY_STATUS.m
 and [deployment instructions](docs/15_DASHBOARD_DEPLOYMENT.md) for verification,
 staging, atomic activation, rollback, and remaining launch requirements.
 
-## Data location (local, not committed)
+## Twin Falls data
 
-The configured raw CSV location is:
+[`data/idwx.sqlite3`](data/idwx.sqlite3) is intentionally committed. It contains
+15,707 local-calendar daily rows for `twin_falls`, derived from the source
+archive at `42.4634, -114.4975` for 1980–2022. It contains no other station.
+The archive is ERA5 reanalysis supplied through Oikolab, not a NOAA observing
+station feed. See [`data/README.md`](data/README.md) for provenance, hashes,
+coverage, and the exact reproducible build command.
 
-`~/historical_weather_data-1980-2022/idaho/`
+The raw hourly CSV remains outside this repository. In the current sibling
+checkout layout it is:
 
-That directory is currently absent in this workspace. Station metadata lists
-Twin Falls; real source availability and coverage remain unverified.
+`../idaho-weather-data/archive/42.4634--114.4975-1980-01-01-2022-12-31-full-params-idaho.csv`
 
-Run the private [source audit](docs/20_SOURCE_DATA_AUDIT.md) before trusting
-historical results:
+Rebuild the committed database after any reviewed source or aggregation change:
 
 ```powershell
-.venv/Scripts/python.exe -m idwx data audit
+uv run idwx data build-sqlite ../idaho-weather-data/archive/42.4634--114.4975-1980-01-01-2022-12-31-full-params-idaho.csv
 ```
 
-It writes `reports_dir/data-audit.json`, reports missing/invalid inputs and
-compares existing daily caches with current aggregation. It does not modify
-sources/caches or certify provenance; even an exit code of zero requires
-manual review. The current workspace report is blocked by missing sources.
+The command fingerprints the source, validates the station mapping, aggregates
+to coverage-aware daily records, integrity-checks a new SQLite file, and
+atomically replaces the configured database. Commit the resulting database
+with the corresponding code/configuration changes. Do not commit the raw CSV.
 
 ## Core principles
 
-- **Local-first**: data stays on disk, never committed.
+- **Bounded data**: raw hourly files stay local; only the allowlisted Twin Falls
+  daily SQLite database is committed.
 - **Reproducible**: configs define everything.
 - **Comparable**: multiple models, same targets, same scoring.
 - **Honest**: always output uncertainty intervals and baseline comparisons.
@@ -86,7 +106,7 @@ value is the difference between confirmed fall and spring dates; its separate
 days are observed and above the threshold. See
 [the calculation contract and verification notes](docs/13_FROST_CALCULATIONS.md).
 
-Export versioned historical JSON and CSV data for the dashboard:
+Export versioned Twin Falls historical JSON and CSV data from SQLite:
 
 ```powershell
 uv run idwx export-web --output web

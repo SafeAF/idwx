@@ -29,15 +29,16 @@ displayed separately. No forecasts are shown.
 
 ```powershell
 uv sync
-uv run idwx export-web --demo --output .tmp/demo-web
-uv run python -m http.server 8765 --bind 127.0.0.1 --directory .tmp/demo-web
+uv run idwx export-web --output .tmp/twin-falls-web
+uv run idwx verify-web .tmp/twin-falls-web
+uv run python -m http.server 8765 --bind 127.0.0.1 --directory .tmp/twin-falls-web
 ```
 
 Open `http://127.0.0.1:8765/`. Stop the server with Ctrl+C when finished.
 Opening `index.html` directly through `file://` will not load modules/data.
-For real inputs, rebuild daily caches and omit `--demo` when exporting into
-a new staging directory. Audit the source first; the current workspace lacks
-the configured real weather directory.
+This export reads the committed Twin Falls database; the raw hourly archive is
+not required. Use `--demo` and a separate output directory only when an
+explicitly labeled synthetic preview is wanted.
 
 ## Nginx configuration
 
@@ -234,7 +235,8 @@ for preview/testing. Real deployment must use audited data and omit both
 `--demo` and `--allow-demo`.
 
 `.github/workflows/verify.yml` configures the same checks on Windows and
-Linux, with the optional Nginx smoke checks on Linux. It uploads only the
-demo ZIP and wheel. Action revisions, pnpm and dependencies are pinned.
+Linux, with the optional Nginx smoke checks on Linux. It verifies and uploads
+both the real Twin Falls deployment ZIP and the synthetic demo ZIP, plus the
+wheel. Action revisions, pnpm and dependencies are pinned.
 The workflow is configured but has not been run remotely in this session.
 See `21_DELIVERY_STATUS.md` for the launch checklist and current blockers.

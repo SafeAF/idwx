@@ -132,7 +132,8 @@ function render() {
   const facts = [
     ['Last valid minimum', doc.source_coverage.last_valid_minimum_date ?? 'Unavailable'],
     ['Archive generated', new Date(state.manifest.generated_at_utc).toLocaleString()],
-    ['Data type', doc.data_kind === 'synthetic_demo' ? 'Synthetic demonstration' : 'Historical source records'],
+    ['Data type', doc.data_kind === 'synthetic_demo' ? 'Synthetic demonstration'
+      : doc.data_kind === 'historical_reanalysis' ? 'Historical reanalysis' : 'Historical source records'],
   ];
   $('freshness').replaceChildren(...facts.flatMap(([key, value]) => [node('dt', key), node('dd', value)]));
   $('full-download').href = releaseURL(state.manifest.history_csv_url, base, state.manifest.release_id);
@@ -141,7 +142,7 @@ function render() {
   $('notice').hidden = false;
   $('notice').textContent = doc.data_kind === 'synthetic_demo'
     ? 'Synthetic demonstration · These dates are invented examples, not station observations. Do not use them for planting decisions.'
-    : archiveAge > 730 ? `Historical archive · The last valid minimum is ${lastValid ?? 'unavailable'}. These records do not describe the current season.`
+    : archiveAge > 730 ? `${doc.data_kind === 'historical_reanalysis' ? 'Historical reanalysis archive' : 'Historical archive'} · The last valid minimum is ${lastValid ?? 'unavailable'}. These records do not describe the current season.`
     : 'Historical records · No current-season model predictions are published in this archive.';
   $('dashboard').hidden = false;
   for (const id of controls) $(id).disabled = false;

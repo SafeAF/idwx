@@ -17,7 +17,14 @@ from idwx.daily import DayAccumulator, finalize_daily
 
 LOG = logging.getLogger(__name__)
 
-FILENAME_COORD_RE = re.compile(r"^([+-]?\d+(?:\.\d+)?)--([+-]?\d+(?:\.\d+)?)-")
+FILENAME_COORD_RES = (
+    # Normal ``<lat>-<lon>-...`` names use two adjacent dashes for a
+    # negative longitude: one separator and one sign.
+    re.compile(r"^([+-]?\d+(?:\.\d+)?)-([+-]?\d+(?:\.\d+)?)-"),
+    # Retain support for the older double-separator convention used by the
+    # original fixtures (three adjacent dashes before a negative longitude).
+    re.compile(r"^([+-]?\d+(?:\.\d+)?)--([+-]?\d+(?:\.\d+)?)-"),
+)
 HEADER_COORDS = "coordinates (lat,lon)"
 HEADER_ELEV = "model elevation (surface)"
 HEADER_UTC_OFFSET = "utc_offset (hrs)"
@@ -31,10 +38,11 @@ def discover_csvs(data_root: Path) -> list[Path]:
 
 
 def _parse_filename_coords(path: Path) -> tuple[float, float]:
-    m = FILENAME_COORD_RE.match(path.name)
-    if not m:
-        raise ValueError(f"Could not parse lat/lon from filename: {path.name}")
-    return float(m.group(1)), float(m.group(2))
+    for pattern in FILENAME_COORD_RES:
+        match = pattern.match(path.name)
+        if match:
+            return float(match.group(1)), float(match.group(2))
+    raise ValueError(f"Could not parse lat/lon from filename: {path.name}")
 
 
 def _fmt6(v: float) -> str:

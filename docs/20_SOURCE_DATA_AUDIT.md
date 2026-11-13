@@ -175,11 +175,14 @@ promotion criteria from the forecast audit.
 
 ## Workspace result and verification
 
-Running the command in this workspace wrote `.tmp/data-audit.json`, with
-status `blocked`, zero source files and two issues: the configured
-`C:/Users/kerrc/historical_weather_data-1980-2022/idaho` directory is unavailable
-and Twin Falls has no matching source. This does not establish that data is
-absent everywhere on the machine. No real station calculation audit is claimed.
+The Twin Falls source is now available at the sibling checkout coordinate
+`42.4634, -114.4975` and has been reproducibly reduced to the checked-in daily
+SQLite database. The one-source builder validates the configured coordinate,
+stores the raw filename/size/SHA-256, detects concurrent source changes, runs
+SQLite integrity checking, and replaces the database atomically. See
+`data/README.md` for the recorded source and database hashes. This bounded
+build evidence is not a substitute for the manual provider, retrieval-history,
+unit, reporting-day, and representative-year review described above.
 
 Thirty-two new synthetic regression cases cover missing/empty roots, private
 report output, raw fingerprints, fresh coverage/frost results, missing-year
@@ -188,7 +191,7 @@ ambiguous/multiple/unconfigured stations, source changes, timezone/offset and
 ordering diagnostics, cache staging preservation, report failure cleanup,
 publication-path rejection and CLI exit/default-output behavior.
 
-Full verification: **201 Python tests passed**, one optional live Nginx test
-skipped; five frontend tests passed. Targeted Ruff and `git diff --check`
-passed. Browser rendering/interactions, production TLS and real-source/model
-validation remain outstanding. No forecasts are published.
+The current regression suite additionally validates the checked-in database,
+configuration drift rejection, and real publication path. Browser rendering,
+production TLS, manual source review, and real-data model validation remain
+separate outstanding work. No forecasts are published.

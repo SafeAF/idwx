@@ -2,6 +2,7 @@ data_root: "~/historical_weather_data-1980-2022/idaho"
 cache_dir: "data_cache"
 models_dir: "models"
 reports_dir: "reports"
+database_path: "data/idwx.sqlite3"
 
 timezone: "America/Boise"
 

@@ -1,8 +1,8 @@
 stations:
   - station_id: twin_falls
     name: Twin Falls
-    lat: 42.5629
-    lon: -114.4609
-    elevation_m: 1134
-    source: NOAA
+    lat: 42.4634
+    lon: -114.4975
+    elevation_m: 1318.38
+    source: Oikolab ERA5 reanalysis
     timezone: America/Boise

@@ -14,7 +14,7 @@ from idwx.web_export import demo_daily, export_web_data
 @pytest.fixture
 def source(tmp_path):
     cfg = replace(load_config("configs/idaho.yml"), cache_dir=tmp_path / "private",
-                  backtest={"start_year": 2000, "end_year": 2022})
+                  backtest={"start_year": 2000, "end_year": 2022}, database_path=None)
     daily_dir = cfg.cache_dir / "daily"
     daily_dir.mkdir(parents=True)
     stations = [StationMeta("alpha", "Alpha", 42.0, -114.0),

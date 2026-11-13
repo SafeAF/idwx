@@ -9,16 +9,15 @@ predictions. The exporter now also installs the dashboard assets; see
 
 ```powershell
 uv sync
-uv run idwx data build --rebuild
 uv run idwx export-web --output web
 ```
 
-Rebuild daily caches produced before the coverage corrections. The exporter
-recalculates frost records from daily caches, bypassing potentially stale
-target caches. Only configured stations are exported; a missing or empty
-station cache fails the entire export. No data is downloaded or fabricated
-as a fallback. Actual source provenance, units, and reporting conventions
-still require the real-data audit described in `13_FROST_CALCULATIONS.md`.
+The default configuration reads the checked-in Twin Falls daily SQLite
+database. Configurations without `database_path` retain the earlier Parquet
+cache path. The exporter recalculates frost records from daily inputs,
+bypassing potentially stale target caches. Only configured stations are
+exported; a missing or empty station fails the entire export. No data is
+downloaded or fabricated as a fallback.
 
 Options:
 
@@ -38,9 +37,10 @@ uv run idwx export-web --demo --output .tmp/demo-web
 ```
 
 Every JSON document and CSV record identifies demo data as `synthetic_demo`.
-Real-cache exports use `historical_observations`; this identifies the input
-mode, not an independent certification of station observations or provenance.
-The generated timestamp describes export time, never observation freshness.
+The checked-in ERA5/Oikolab database exports as `historical_reanalysis`;
+legacy observation-cache exports use `historical_observations`. These values
+identify the input class, not an independent certification of provenance. The
+generated timestamp describes export time, never observation freshness.
 
 ## Release layout
 
@@ -179,9 +179,9 @@ retention cleanup, server configuration, and HTTP verification remain Phase 5.
 Run `uv run pytest -q`. Tests verify calendar-normalized quantiles, baseline
 filtering, minimum history, null handling, public field selection, CSV/JSON
 agreement, release checksums and references, reproducibility, station safety,
-synthetic labels, stale-cache bypass, CLI options, and failure preservation
-of the active manifest. These checks use synthetic data because the configured
-real source directory remains unavailable.
+synthetic labels, SQLite/legacy-cache inputs, CLI options, and failure
+preservation of the active manifest. The checked-in Twin Falls database also
+has a bounded-content regression and is exercised by the real export in CI.
 
 ## Independent publication verification and portable delivery
 

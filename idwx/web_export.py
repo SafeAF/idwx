@@ -19,6 +19,7 @@ import pandas as pd
 from idwx.config import Config, StationMeta
 from idwx.frost import frost_rows, validated_daily
 from idwx.history import summarize_events
+from idwx.sqlite_store import load_daily_from_sqlite
 
 SCHEMA_VERSION = "1.0.0"
 WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/format.js")
@@ -162,14 +163,24 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
     if len(set(cfg.frost_thresholds_c)) != len(cfg.frost_thresholds_c):
         raise ValueError("Frost thresholds must be unique")
     documents = []
+    data_kinds = set()
     for station in sorted(stations, key=lambda s: s.station_id):
-        daily = demo_daily(station.station_id) if demo else pd.read_parquet(
-            cfg.cache_dir / "daily" / f"{station.station_id}.parquet")
+        if demo:
+            daily = demo_daily(station.station_id)
+            data_kinds.add("synthetic_demo")
+        elif cfg.database_path is not None:
+            daily, data_kind = load_daily_from_sqlite(cfg.database_path, station)
+            data_kinds.add(data_kind)
+        else:
+            daily = pd.read_parquet(cfg.cache_dir / "daily" / f"{station.station_id}.parquet")
+            data_kinds.add("historical_observations")
         years = pd.to_datetime(daily["date"]).dt.year
         period = baseline or (int(cfg.backtest.get("start_year", years.min())),
                               int(cfg.backtest.get("end_year", years.max())))
         documents.append(station_history(daily, station, cfg, period, min_years))
-    kind = "synthetic_demo" if demo else "historical_observations"
+    if len(data_kinds) != 1:
+        raise ValueError("All exported stations must use the same data kind")
+    kind = data_kinds.pop()
     common = {"schema_version": SCHEMA_VERSION, "data_kind": kind, "methodology": NOTICE}
     identity = hashlib.sha256(_json({**common, "stations": documents})).hexdigest()
     release_id = identity  # Full content hash avoids mutable release paths.
