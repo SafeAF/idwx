@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calendarDay, displayDate, dateParts, temperature, historicalText, historyCSV, releaseURL, validateRelease, baselineDetails } from '../web/js/format.js';
+import { calendarDay, displayDate, dateParts, temperature, historicalText, historyCSV, releaseURL, validateRelease, baselineDetails, yearInTimeZone, climatologyProjection } from '../web/js/format.js';
 
 test('date-only values retain their calendar day in every local timezone', () => {
   assert.equal(displayDate('2020-03-01'), 'Mar 1');
@@ -38,6 +38,30 @@ test('threshold conversion preserves exact -2 C Fahrenheit label and missing val
 
 test('insufficient history never becomes a typical date', () => {
   assert.match(historicalText({ status: 'insufficient_history', valid_year_count: 2, minimum_valid_years: 10 }), /2 confirmed years; 10 required/);
+});
+
+test('climatology projection uses station-local year, historical median, and P10-P90 range', () => {
+  assert.equal(yearInTimeZone('America/Boise', new Date('2026-01-01T01:00:00Z')), 2025);
+  assert.equal(yearInTimeZone('UTC', new Date('2026-01-01T01:00:00Z')), 2026);
+  const distribution = (p10, p50, p90, valid_year_count = 40) => ({
+    status: 'available', valid_year_count,
+    baseline_period: { start_year: 1980, end_year: 2022 },
+    p10: { month_day: p10 }, p50: { month_day: p50 }, p90: { month_day: p90 },
+  });
+  const projection = climatologyProjection({
+    last_spring_frost: distribution('04-10', '04-20', '05-01'),
+    first_fall_frost: distribution('09-20', '10-01', '10-12', 39),
+  }, 2026);
+  assert.deepEqual(projection.spring, {
+    p10: '04-10', p50: '04-20', p90: '05-01', confirmedYears: 40,
+    baseline: { start_year: 1980, end_year: 2022 },
+  });
+  assert.equal(projection.fall.p50, '10-01');
+  assert.equal(projection.frostFreeDays, calendarDay('2000-10-01') - calendarDay('2000-04-20') - 1);
+  assert.equal(climatologyProjection({
+    last_spring_frost: { status: 'insufficient_history' },
+    first_fall_frost: { status: 'insufficient_history' },
+  }, 2026).frostFreeDays, null);
 });
 
 test('all data references are pinned to the same release and origin', () => {

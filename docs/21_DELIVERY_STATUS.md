@@ -16,13 +16,16 @@ accuracy.
   manifest replacement, fixed public assets, and installed-wheel support.
 - Schema-versioned SQLite storage with raw-source fingerprinting, atomic
   rebuild, strict one-station configuration matching, and a checked-in
-  1980–2022 Twin Falls ERA5/Oikolab daily dataset.
-- Buildless responsive dashboard with station/threshold/year/unit controls,
-  shareable URLs, chart/table/CSV views, coverage and freshness details, and
-  explicit loading, error and unavailable states. The baseline table exposes
+  Twin Falls ERA5/Oikolab daily dataset refreshed through November 7, 2026.
+- Buildless responsive dashboard with a current-year historical climatology
+  panel, station/threshold/year/unit controls, shareable URLs, chart/table/CSV
+  views, coverage and freshness details, and explicit loading, error and
+  unavailable states. The panel exposes P50 projected dates, P10–P90
+  historical ranges, and median-to-median frost-free span without implying
+  current-weather input or a validated model forecast. The baseline table exposes
   observed extremes and confirmed/no-event/incomplete/unavailable year counts.
   Observed event dates and
-  historical typical dates/ranges are distinguished. No predictions appear.
+  historical typical dates/ranges are distinguished. No model predictions appear.
 - Independent package verification, synthetic-data guard, portable ZIP
   packaging, Nginx configuration, staging/activation/rollback instructions,
   a repeatable verification runner, and Windows/Linux CI configuration.
@@ -37,17 +40,21 @@ accuracy.
 | 1: calculations | Conservative event/interval rules, private audit command, and reproducible Twin Falls daily SQLite build from the original hourly source | Complete manual units, provenance, reporting-day, coverage, and representative station-year review |
 | 2: summaries and prediction validation | Reproducible historical quantiles and research correctness safeguards | Real chronological backtests, baseline skill, bias, interval coverage/width, calibration and publication criteria; forecasts remain excluded |
 | 3: data contract | Schema 1.0.0, pinned releases, JSON/CSV, atomic publication, independent verifier, portable archive, and verified Twin Falls real export | Treat manual source review as separate acceptance evidence |
-| 4: dashboard | Working modules; 20 automated utility/DOM checks against synthetic exports | Actual desktop/mobile appearance, keyboard behavior, native downloads and recovery in a supported browser |
+| 4: dashboard | Working modules; 21 automated utility/DOM checks against synthetic exports | Actual desktop/mobile appearance, keyboard behavior, native downloads and recovery in a supported browser |
 | 5: deployment | Nginx HTTP/TLS template and loopback checks, staging/rollback procedures | Reach proxy1, identify public domain/document root, preserve existing sites, install valid certificates, deploy and verify public HTTPS; choose schedule after source cadence is known |
 | 6: delivery | Full local regressions, source/deploy documentation, and CI configuration for real and demo ZIPs plus wheel | Run configured CI remotely; finish live browser, source and production checks |
 
 ## Verification evidence
 
-The Twin Falls integration pass runs 229 Python tests successfully, with the
-two optional Nginx tests skipped in the default run. A clean rebuild from the
-80,044,940-byte source is byte-identical to the committed database. A real
-export verifies successfully with one station, 86 annual threshold records,
-and no forecasts. The prior completion pass ran twenty frontend tests.
+The Twin Falls integration pass runs 233 Python tests successfully, with the
+two optional Nginx tests skipped in the default run. The checked-in database
+passes SQLite integrity checks and records separate hashes for the original
+80,044,940-byte archive and the 33,808-row Oikolab refresh. A real export
+verifies successfully with one station, 94 annual threshold records, and no
+model forecast records. Its historical baseline includes 46 completed years
+through 2025; 2026 remains visible as partial source coverage. The browser
+separately derives its labeled climatology projection from the verified
+summaries. Twenty-one frontend tests pass.
 Both optional Nginx tests pass separately with official Windows Nginx 1.30.6.
 The latter cover MIME types, cache policy, missing-file responses, denied
 staging paths, manifest rollback, HTTP-to-HTTPS redirects, and TLS 1.2/1.3.

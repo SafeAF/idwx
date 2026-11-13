@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -164,6 +167,79 @@ def data_build_sqlite(
     try:
         report = build_sqlite_database(cfg, matches[0], source, destination)
     except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(report))
+
+
+@data_app.command("refresh-oikolab")
+def data_refresh_oikolab(
+    station_id: str = typer.Option("twin_falls", "--station"),
+    config: str = typer.Option("configs/idaho.yml", "--config"),
+    output: Path | None = typer.Option(None, "--output"),  # noqa: B008 - Typer declarations.
+) -> None:
+    """Fetch published ERA5 hours from Oikolab and atomically refresh SQLite."""
+    from zoneinfo import ZoneInfo
+
+    from idwx.oikolab import era5_available_end, fetch_era5_hourly_csv
+    from idwx.sqlite_store import refresh_sqlite_database
+
+    cfg = load_config(config)
+    matches = [station for station in load_stations(cfg.stations_file)
+               if station.station_id == station_id]
+    if len(matches) != 1:
+        raise typer.BadParameter(f"Unknown or duplicate configured station: {station_id}")
+    station = matches[0]
+    destination = (output or cfg.database_path)
+    if destination is None:
+        raise typer.BadParameter("Supply --output or configure database_path")
+    destination = destination.expanduser().resolve()
+    api_key = os.environ.get("OIKOLAB_API_KEY")
+    if not api_key:
+        api_key = typer.prompt("Oikolab API key", hide_input=True)
+
+    try:
+        with sqlite3.connect(f"{destination.as_uri()}?mode=ro", uri=True) as connection:
+            stored = connection.execute(
+                "SELECT date, n_obs, quality_flags FROM daily_weather "
+                "WHERE station_id = ? ORDER BY date DESC LIMIT 1", (station.station_id,),
+            ).fetchone()
+        if stored is None:
+            raise ValueError(f"Station {station.station_id} has no existing SQLite rows")
+        last_date = pd.Timestamp(stored[0]).date()
+        available_end = era5_available_end(api_key)
+        local_end = pd.Timestamp(available_end).tz_convert(ZoneInfo(station.timezone or cfg.timezone))
+        latest_complete_date = (
+            local_end.date() if local_end.hour == 23 else (local_end - pd.Timedelta(days=1)).date()
+        )
+        last_is_complete = stored[1] >= cfg.hourly_min_coverage and stored[2] == ""
+        if last_date >= latest_complete_date and last_is_complete:
+            typer.echo(json.dumps({
+                "database": str(destination), "station_id": station.station_id,
+                "status": "already_current", "last_complete_date": last_date.isoformat(),
+                "era5_available_end_utc": available_end.isoformat(),
+            }))
+            return
+
+        start = datetime.combine(last_date, datetime.min.time(), tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory(prefix="idwx-oikolab-") as temporary:
+            hourly = Path(temporary) / (
+                f"{station.lat}--{abs(float(station.lon))}-"
+                f"{start.date().isoformat()}-{available_end.date().isoformat()}-oikolab-era5.csv"
+            )
+            fetch_report = fetch_era5_hourly_csv(
+                api_key, hourly, latitude=float(station.lat), longitude=float(station.lon),
+                start=start, end=available_end,
+            )
+            report = refresh_sqlite_database(
+                cfg, station, hourly, destination,
+                requested_start_utc=start.isoformat(), requested_end_utc=available_end.isoformat(),
+            )
+        report.update({
+            "status": "refreshed",
+            "hourly_rows": fetch_report["rows"],
+            "era5_available_end_utc": available_end.isoformat(),
+        })
+    except (OSError, TypeError, ValueError, sqlite3.Error) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps(report))
 

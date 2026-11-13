@@ -154,6 +154,28 @@ def test_ignores_old_target_caches(source):
     assert manifest["release_id"]
 
 
+def test_historical_export_extends_past_model_backtest_cutoff(source):
+    cfg, stations, output = source
+    station = stations[0]
+    path = cfg.cache_dir / f"daily/{station.station_id}.parquet"
+    daily = pd.read_parquet(path)
+    recent_dates = pd.date_range("2023-01-01", "2024-12-31")
+    recent = pd.DataFrame({
+        "station_id": station.station_id, "date": recent_dates, "tmin_c": 8.0,
+    })
+    recent.loc[recent.date.dt.strftime("%m-%d").isin(["05-01", "10-01"]), "tmin_c"] = -1.0
+    pd.concat([daily, recent], ignore_index=True).to_parquet(path, index=False)
+
+    manifest = export_web_data(cfg, [station], output)
+    index = read_json(output / manifest["stations_url"])
+    document = read_json(output / index["stations"][0]["url"])
+    assert document["season_years"] == {"start_year": 2000, "end_year": 2024}
+    assert document["summaries"][0]["last_spring_frost"]["baseline_period"] == {
+        "start_year": 2000, "end_year": 2024,
+    }
+    assert {row["season_year"] for row in document["annual"]} == set(range(2000, 2025))
+
+
 def test_all_missing_minima_remain_null_and_insufficient(source):
     cfg, stations, output = source
     path = cfg.cache_dir / "daily/alpha.parquet"

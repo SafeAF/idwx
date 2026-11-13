@@ -2,7 +2,9 @@
 
 This implements historical summaries from Phase 2 and the export contract of
 Phase 3 in `12_FROST_STATIC_WEBSITE_PLAN.md`. It does not publish model
-predictions. The exporter now also installs the dashboard assets; see
+prediction records. The browser derives a clearly labeled current-year
+climatology projection from the historical summaries. The exporter now also
+installs the dashboard assets; see
 `15_DASHBOARD_DEPLOYMENT.md` for preview, deployment, and verification.
 
 ## Build
@@ -24,8 +26,10 @@ Options:
 - `--config`: main YAML configuration, default `configs/idaho.yml`.
 - `--output`: publication root, default `web`.
 - `--baseline-start` and `--baseline-end`: inclusive years, supplied together
-  and within the exported season-year range. Defaults to the configured
-  backtest years, or observed years if configuration omits those bounds.
+  and within the exported season-year range. By default the start follows the
+  configured backtest start while the end advances through the latest complete
+  observed calendar year. The model backtest cutoff does not suppress newer
+  historical records from the website.
 - `--min-history-years`: positive confirmed-year minimum for displaying
   quantiles, default 10. This is a display policy, not an accuracy guarantee.
 - `--demo`: explicitly synthetic 2000-2022 examples, with partial coverage,
@@ -145,6 +149,18 @@ typical historical date. Spring P90 describes a later last freeze; fall P10
 describes an earlier first freeze. These are not forecast uncertainty bounds
 or guarantees for an individual season.
 
+## Current-year climatology projection
+
+The dashboard uses the station's IANA timezone to select the current calendar
+year. For each threshold, it presents historical P50 as the projected spring
+and fall date and historical P10–P90 as the accompanying range. When both
+medians exist, it also shows the strictly intervening calendar-day count.
+
+This is a browser-derived historical baseline. It does not add forecast fields
+to JSON/CSV, use observations after the archive cutoff, ingest current weather,
+or run the research model pipeline. If either distribution has insufficient
+confirmed history, that event and the derived span display as unavailable.
+
 ## Publication and rollback
 
 The release ID is a full SHA-256 digest of canonical public content, including
@@ -190,8 +206,10 @@ read-only check accepts schema 1.0.0, verifies the active and every retained
 release, canonical content identity, checksums, path/file/field allowlists,
 finite JSON values, event and interval consistency, recalculated historical
 summaries, and CSV/JSON agreement. Unexpected files or directories, private
-fields, forecasts, symlinks within the publication, and synthetic releases
-are rejected. A deployment root symlink itself is supported. A retained
+fields, model forecast records, symlinks within the publication, and synthetic
+releases are rejected. The verifier reports the allowlisted browser-derived
+climatology projection separately from `forecasts_included: false`. A
+deployment root symlink itself is supported. A retained
 release must satisfy the same contract as the active release.
 
 `valid_static_package` means the package is internally consistent. It does

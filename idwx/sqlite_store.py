@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -13,7 +14,7 @@ import pandas as pd
 from idwx.config import Config, StationMeta
 from idwx.io import ingest_era5_hourly_csv
 
-DATABASE_SCHEMA_VERSION = 1
+DATABASE_SCHEMA_VERSION = 2
 DATABASE_APPLICATION_ID = 0x49445758  # ASCII "IDWX"
 REANALYSIS_DATA_KIND = "historical_reanalysis"
 DAILY_COLUMNS = (
@@ -89,6 +90,24 @@ def _write_database(path: Path, station: StationMeta, daily: pd.DataFrame, *, so
                 quality_flags TEXT NOT NULL,
                 PRIMARY KEY (station_id, date)
             ) STRICT, WITHOUT ROWID;
+            CREATE TABLE source_refreshes (
+                refresh_id INTEGER PRIMARY KEY,
+                station_id TEXT NOT NULL REFERENCES stations(station_id),
+                file_name TEXT NOT NULL,
+                sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+                size_bytes INTEGER NOT NULL CHECK(size_bytes > 0),
+                adapter TEXT NOT NULL,
+                precipitation_mode TEXT NOT NULL,
+                hourly_min_coverage INTEGER NOT NULL CHECK(hourly_min_coverage > 0),
+                requested_start_utc TEXT NOT NULL,
+                requested_end_utc TEXT NOT NULL,
+                first_local_date TEXT NOT NULL,
+                last_local_date TEXT NOT NULL,
+                first_imported_date TEXT NOT NULL,
+                last_imported_date TEXT NOT NULL,
+                imported_rows INTEGER NOT NULL CHECK(imported_rows > 0),
+                UNIQUE(station_id, sha256)
+            ) STRICT;
         """)
         connection.executemany("INSERT INTO metadata(key, value) VALUES (?, ?)", (
             ("schema_version", str(DATABASE_SCHEMA_VERSION)),
@@ -166,6 +185,128 @@ def build_sqlite_database(config: Config, station: StationMeta, source: Path,
         "first_date": pd.Timestamp(daily["date"].min()).date().isoformat(),
         "last_date": pd.Timestamp(daily["date"].max()).date().isoformat(),
         "valid_minimum_days": int(daily["tmin_c"].notna().sum()),
+        "data_kind": REANALYSIS_DATA_KIND,
+    }
+
+
+def _upgrade_refresh_schema(connection: sqlite3.Connection, user_version: int) -> None:
+    if user_version == DATABASE_SCHEMA_VERSION:
+        return
+    if user_version != 1:
+        raise ValueError("Unsupported IDWX SQLite database")
+    connection.execute("""
+        CREATE TABLE source_refreshes (
+            refresh_id INTEGER PRIMARY KEY,
+            station_id TEXT NOT NULL REFERENCES stations(station_id),
+            file_name TEXT NOT NULL,
+            sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+            size_bytes INTEGER NOT NULL CHECK(size_bytes > 0),
+            adapter TEXT NOT NULL,
+            precipitation_mode TEXT NOT NULL,
+            hourly_min_coverage INTEGER NOT NULL CHECK(hourly_min_coverage > 0),
+            requested_start_utc TEXT NOT NULL,
+            requested_end_utc TEXT NOT NULL,
+            first_local_date TEXT NOT NULL,
+            last_local_date TEXT NOT NULL,
+            first_imported_date TEXT NOT NULL,
+            last_imported_date TEXT NOT NULL,
+            imported_rows INTEGER NOT NULL CHECK(imported_rows > 0),
+            UNIQUE(station_id, sha256)
+        ) STRICT
+    """)
+    connection.execute("UPDATE metadata SET value = ? WHERE key = 'schema_version'",
+                       (str(DATABASE_SCHEMA_VERSION),))
+    connection.execute(f"PRAGMA user_version = {DATABASE_SCHEMA_VERSION}")
+
+
+def refresh_sqlite_database(config: Config, station: StationMeta, source: Path,
+                            output: Path, *, requested_start_utc: str,
+                            requested_end_utc: str) -> dict:
+    """Atomically merge complete daily rows from an Oikolab hourly fragment."""
+    source = source.expanduser().resolve()
+    output = output.expanduser().resolve()
+    if source == output:
+        raise ValueError("SQLite output must not replace the raw source file")
+    if not output.is_file():
+        raise FileNotFoundError(f"SQLite weather database does not exist: {output}")
+    before = source.stat()
+    source_digest = _sha256(source)
+    station_id, daily, precip_mode = ingest_era5_hourly_csv(source, config, [station])
+    after = source.stat()
+    if station_id != station.station_id:
+        raise ValueError(f"Source coordinates do not match configured station {station.station_id}")
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+        raise ValueError("Source file changed while the database was being refreshed")
+    complete = daily.loc[
+        daily["quality_flags"].eq("")
+        & daily["tmin_c"].notna()
+        & daily["tmax_c"].notna()
+        & daily["tmean_c"].notna()
+        & daily["n_obs"].ge(config.hourly_min_coverage)
+    ].copy()
+    if complete.empty:
+        raise ValueError("Oikolab source produced no complete local daily rows")
+
+    temporary_path: Path | None = None
+    try:
+        descriptor, name = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
+        os.close(descriptor)
+        temporary_path = Path(name)
+        shutil.copyfile(output, temporary_path)
+        with sqlite3.connect(temporary_path) as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            application_id = connection.execute("PRAGMA application_id").fetchone()[0]
+            user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if application_id != DATABASE_APPLICATION_ID:
+                raise ValueError("Unsupported IDWX SQLite database")
+            _upgrade_refresh_schema(connection, user_version)
+            stored = connection.execute(
+                "SELECT name, latitude, longitude, elevation_m, source, timezone "
+                "FROM stations WHERE station_id = ?", (station.station_id,),
+            ).fetchone()
+            expected = (station.name, _optional_float(station.lat), _optional_float(station.lon),
+                        _optional_float(station.elevation_m), station.source,
+                        station.timezone or "America/Boise")
+            if stored != expected:
+                raise ValueError(f"Configured metadata for {station.station_id} differs from the SQLite database")
+            connection.executemany(
+                "INSERT OR REPLACE INTO daily_weather VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                _daily_rows(complete),
+            )
+            connection.execute(
+                "INSERT INTO source_refreshes "
+                "(station_id, file_name, sha256, size_bytes, adapter, precipitation_mode, "
+                "hourly_min_coverage, requested_start_utc, requested_end_utc, first_local_date, "
+                "last_local_date, first_imported_date, last_imported_date, imported_rows) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (station.station_id, source.name, source_digest, before.st_size,
+                 "oikolab_era5_hourly_celsius_v1", precip_mode, config.hourly_min_coverage,
+                 requested_start_utc, requested_end_utc,
+                 pd.Timestamp(daily["date"].min()).date().isoformat(),
+                 pd.Timestamp(daily["date"].max()).date().isoformat(),
+                 pd.Timestamp(complete["date"].min()).date().isoformat(),
+                 pd.Timestamp(complete["date"].max()).date().isoformat(), len(complete)),
+            )
+            connection.commit()
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+            if result != ("ok",):
+                raise ValueError(f"SQLite integrity check failed: {result}")
+            connection.execute("VACUUM")
+        os.chmod(temporary_path, 0o644)
+        os.replace(temporary_path, output)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+    return {
+        "database": str(output),
+        "sha256": _sha256(output),
+        "station_id": station.station_id,
+        "source_rows": len(daily),
+        "imported_rows": len(complete),
+        "first_imported_date": pd.Timestamp(complete["date"].min()).date().isoformat(),
+        "last_imported_date": pd.Timestamp(complete["date"].max()).date().isoformat(),
         "data_kind": REANALYSIS_DATA_KIND,
     }
 

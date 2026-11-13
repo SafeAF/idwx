@@ -1,4 +1,4 @@
-import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument, baselineDetails } from './format.js';
+import { EVENT_NAMES, statusLabel, displayDate, temperature, historicalText, historyCSV, releaseURL, validateRelease, validateStationDocument, baselineDetails, yearInTimeZone, climatologyProjection } from './format.js';
 import { renderHistory } from './charts.js';
 
 const $ = id => document.getElementById(id);
@@ -54,6 +54,19 @@ function card(title, event, summary, className) {
   article.append(node('p', 'Historical · ' + historicalText(summary), 'historical'));
   return article;
 }
+function projectionCard(title, projection, className) {
+  const article = node('article', undefined, `projection-card ${className}`);
+  article.append(node('h3', title));
+  if (!projection) {
+    article.append(node('p', 'Not available', 'projection-value text-value'));
+    article.append(node('p', 'The historical baseline does not contain enough confirmed events.', 'projection-context'));
+    return article;
+  }
+  article.append(node('p', displayDate(`2000-${projection.p50}`), 'projection-value'));
+  article.append(node('p', `Historical P10–P90 · ${displayDate(`2000-${projection.p10}`)}–${displayDate(`2000-${projection.p90}`)}`, 'projection-range'));
+  article.append(node('p', `${projection.confirmedYears} confirmed years · baseline ${projection.baseline.start_year}–${projection.baseline.end_year}`, 'projection-context'));
+  return article;
+}
 function eventCell(event) {
   const cell = node('td', event.date ? displayDate(event.date) : '—');
   cell.append(node('span', statusLabel(event.status), 'cell-status'));
@@ -66,13 +79,26 @@ function render() {
   if (!selected) throw new Error('The selected season is missing from this release.');
   const summary = doc.summaries.find(s => s.threshold_c === state.threshold);
   if (!summary) throw new Error('Historical summaries are missing from this release.');
+  const projectionYear = yearInTimeZone(doc.station.timezone);
+  const projection = climatologyProjection(summary, projectionYear);
+  if (!projection) throw new Error('The historical projection could not be calculated.');
   options('threshold', doc.thresholds_c.map(t => [t, `${temperature(t, state.unit)} or colder`]), state.threshold);
   options('year', [...records].reverse().map(r => [r.season_year, r.season_year]), state.year);
   document.querySelector(`input[name="unit"][value="${state.unit}"]`).checked = true;
   $('station-title').textContent = doc.station.name;
   const coordinates = Number.isFinite(doc.station.lat) && Number.isFinite(doc.station.lon) ? `${doc.station.lat.toFixed(3)}°, ${doc.station.lon.toFixed(3)}° · ` : '';
   $('station-meta').textContent = `${coordinates}${doc.station.timezone} · Source records ${doc.source_coverage.first_date} to ${doc.source_coverage.last_date}`;
-  $('year-badge').textContent = `${state.year} season`;
+  $('year-badge').textContent = `Archive view · ${state.year}`;
+  $('projection-title').textContent = `${projectionYear} frost projection`;
+  $('projection-copy').textContent = `Historical climatology for ${doc.station.name} at ${temperature(state.threshold, state.unit)} or colder. The projected date is the historical median; the range shows P10–P90 of confirmed events.`;
+  const springProjection = projectionCard('Last spring freeze', projection.spring, 'spring-projection');
+  const fallProjection = projectionCard('First fall freeze', projection.fall, 'fall-projection');
+  const spanProjection = node('article', undefined, 'projection-card span-projection');
+  spanProjection.append(node('h3', 'Projected frost-free span'));
+  spanProjection.append(node('p', projection.frostFreeDays === null ? 'Not available' : `About ${projection.frostFreeDays} days`, `projection-value ${projection.frostFreeDays === null ? 'text-value' : ''}`));
+  spanProjection.append(node('p', 'Median spring date to median fall date, excluding both endpoints.', 'projection-range'));
+  spanProjection.append(node('p', 'Calendar estimate only · daily conditions can shorten the actual season', 'projection-context'));
+  $('projection-cards').replaceChildren(springProjection, fallProjection, spanProjection);
   const spring = card('Last spring freeze', selected.last_spring_frost, summary.last_spring_frost, 'spring-card');
   const fall = card('First fall freeze', selected.first_fall_frost, summary.first_fall_frost, 'fall-card');
   const interval = node('article', undefined, 'card interval-card');
@@ -141,9 +167,9 @@ function render() {
   const archiveAge = lastValid ? (Date.now() - Date.parse(lastValid + 'T00:00:00Z')) / 86400000 : Infinity;
   $('notice').hidden = false;
   $('notice').textContent = doc.data_kind === 'synthetic_demo'
-    ? 'Synthetic demonstration · These dates are invented examples, not station observations. Do not use them for planting decisions.'
-    : archiveAge > 730 ? `${doc.data_kind === 'historical_reanalysis' ? 'Historical reanalysis archive' : 'Historical archive'} · The last valid minimum is ${lastValid ?? 'unavailable'}. These records do not describe the current season.`
-    : 'Historical records · No current-season model predictions are published in this archive.';
+    ? 'Synthetic demonstration · These dates and the current-year projection are invented examples. Do not use them for planting decisions.'
+    : archiveAge > 730 ? `${doc.data_kind === 'historical_reanalysis' ? 'Historical reanalysis archive' : 'Historical archive'} · The last valid minimum is ${lastValid ?? 'unavailable'}. The ${projectionYear} projection is historical climatology only and does not use current conditions.`
+    : `Historical records · The ${projectionYear} projection is historical climatology only, not a live weather forecast.`;
   $('dashboard').hidden = false;
   for (const id of controls) $(id).disabled = false;
   $('status').textContent = `${doc.station.name}, ${state.year}, ${temperature(state.threshold, state.unit)} threshold loaded.`;

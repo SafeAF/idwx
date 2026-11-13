@@ -13,11 +13,13 @@ This is seasonal / event forecasting for agriculture.
 ## Static frost dashboard delivery
 
 The historical dashboard, exporter, portable package verifier, Nginx template,
-and regression suite are implemented. Predictions remain research-only and
-are excluded from the website. The repository includes a compact daily SQLite
-database for the Twin Falls ERA5/Oikolab archive, so a real-data static site
-can be built without copying the private 80 MB hourly source to the deployment
-host.
+and regression suite are implemented. The website shows a current-year
+historical climatology projection: P50 is the projected date and P10–P90 is
+the historical range. It does not publish the repository's research model
+predictions or use current weather. The repository includes a compact daily
+SQLite database for the Twin Falls ERA5/Oikolab archive, so a real-data static
+site can be built without copying the private 80 MB hourly source to the
+deployment host.
 
 ```powershell
 uv sync --locked
@@ -48,8 +50,9 @@ staging, atomic activation, rollback, and remaining launch requirements.
 ## Twin Falls data
 
 [`data/idwx.sqlite3`](data/idwx.sqlite3) is intentionally committed. It contains
-15,707 local-calendar daily rows for `twin_falls`, derived from the source
-archive at `42.4634, -114.4975` for 1980–2022. It contains no other station.
+17,114 local-calendar daily rows for `twin_falls`, derived from the source
+archive plus a validated Oikolab refresh at `42.4634, -114.4975`, through
+November 7, 2026. It contains no other station.
 The archive is ERA5 reanalysis supplied through Oikolab, not a NOAA observing
 station feed. See [`data/README.md`](data/README.md) for provenance, hashes,
 coverage, and the exact reproducible build command.
@@ -69,6 +72,17 @@ The command fingerprints the source, validates the station mapping, aggregates
 to coverage-aware daily records, integrity-checks a new SQLite file, and
 atomically replaces the configured database. Commit the resulting database
 with the corresponding code/configuration changes. Do not commit the raw CSV.
+
+Refresh the database from Oikolab with a hidden credential prompt:
+
+```powershell
+uv run idwx data refresh-oikolab
+```
+
+The refresh checks published ERA5 availability, downloads only the Twin Falls
+gap, validates continuous hourly temperature and precipitation, imports only
+complete local days, records a source hash, and atomically replaces SQLite.
+The API key is used at runtime and is never written to the repository.
 
 ## Core principles
 
@@ -123,9 +137,10 @@ Without local weather data, generate explicitly labeled synthetic examples:
 uv run idwx export-web --demo --output .tmp/demo-web
 ```
 
-The export includes the complete buildless dashboard: station/threshold/year
-controls, unit switching, confirmed dates and historical ranges, coverage,
-an accessible history table, and CSV downloads. Open it through an HTTP server:
+The export includes the complete buildless dashboard: a current-year
+climatology projection, station/threshold/year controls, unit switching,
+confirmed dates and historical ranges, coverage, an accessible history table,
+and CSV downloads. Open it through an HTTP server:
 
 ```powershell
 uv run python -m http.server 8765 --bind 127.0.0.1 --directory .tmp/demo-web
@@ -142,7 +157,8 @@ production browser/TLS checks, and forecast validation remain outstanding.
 
 The [forecast correctness audit](docs/16_FORECAST_CORRECTNESS_AUDIT.md) records
 input leakage fixes, required cache rebuilding, and the remaining blockers.
-Local modeling commands remain research tools; no forecasts are published.
+Local modeling commands remain research tools; no model forecasts are
+published. The website projection is the historical baseline only.
 
 An opt-in [January 1 frost research protocol](docs/17_PRESEASON_RESEARCH_PROTOCOL.md)
 now shares explicit information cutoffs across training, backtesting and

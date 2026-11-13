@@ -42,6 +42,41 @@ export function historicalText(summary) {
   return `Typical ${displayDate(`2000-${summary.p50.month_day}`)} · P10–P90 ${displayDate(`2000-${summary.p10.month_day}`)}–${displayDate(`2000-${summary.p90.month_day}`)} · ${summary.valid_year_count} years`;
 }
 
+export function yearInTimeZone(timeZone, now = new Date()) {
+  try {
+    const year = Number(new Intl.DateTimeFormat('en-US', {
+      year: 'numeric', timeZone,
+    }).format(now));
+    return Number.isInteger(year) ? year : now.getUTCFullYear();
+  } catch {
+    return now.getUTCFullYear();
+  }
+}
+
+export function climatologyProjection(summary, year) {
+  const project = distribution => {
+    if (!distribution || distribution.status !== 'available') return null;
+    const points = ['p10', 'p50', 'p90'].map(key => distribution[key]?.month_day);
+    const days = points.map(monthDay => calendarDay(`2000-${monthDay}`));
+    if (days.some(day => day === null) || days[0] > days[1] || days[1] > days[2]) return null;
+    return {
+      p10: points[0], p50: points[1], p90: points[2],
+      confirmedYears: distribution.valid_year_count,
+      baseline: distribution.baseline_period,
+    };
+  };
+  if (!Number.isInteger(year) || year < 1 || year > 9999) return null;
+  const spring = project(summary?.last_spring_frost);
+  const fall = project(summary?.first_fall_frost);
+  const springDay = spring ? calendarDay(`2000-${spring.p50}`) : null;
+  const fallDay = fall ? calendarDay(`2000-${fall.p50}`) : null;
+  return {
+    year, spring, fall,
+    frostFreeDays: springDay !== null && fallDay !== null && fallDay > springDay
+      ? fallDay - springDay - 1 : null,
+  };
+}
+
 export function baselineDetails(records, eventName, summary) {
   const period = summary.baseline_period;
   const events = records.filter(row => row.season_year >= period.start_year && row.season_year <= period.end_year)

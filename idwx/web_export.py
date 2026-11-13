@@ -77,7 +77,10 @@ def station_history(daily: pd.DataFrame, station: StationMeta, cfg: Config,
     if df.empty:
         raise ValueError(f"No daily records for configured station {station.station_id}")
     start = int(cfg.backtest.get("start_year", df.index.year.min()))
-    end = int(cfg.backtest.get("end_year", df.index.year.max()))
+    # The model backtest can intentionally retain an older information cutoff,
+    # but the historical website should expose all available years. Research
+    # model training remains governed by cfg.backtest elsewhere.
+    end = max(int(cfg.backtest.get("end_year", df.index.year.max())), int(df.index.year.max()))
     if start > end or not cfg.frost_thresholds_c:
         raise ValueError("Export requires an ordered year range and at least one threshold")
     if not start <= baseline[0] <= baseline[1] <= end:
@@ -175,8 +178,12 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
             daily = pd.read_parquet(cfg.cache_dir / "daily" / f"{station.station_id}.parquet")
             data_kinds.add("historical_observations")
         years = pd.to_datetime(daily["date"]).dt.year
-        period = baseline or (int(cfg.backtest.get("start_year", years.min())),
-                              int(cfg.backtest.get("end_year", years.max())))
+        last_date = pd.Timestamp(daily["date"].max())
+        latest_complete_year = last_date.year if (last_date.month, last_date.day) == (12, 31) else last_date.year - 1
+        period = baseline or (
+            int(cfg.backtest.get("start_year", years.min())),
+            max(int(cfg.backtest.get("end_year", years.max())), latest_complete_year),
+        )
         documents.append(station_history(daily, station, cfg, period, min_years))
     if len(data_kinds) != 1:
         raise ValueError("All exported stations must use the same data kind")

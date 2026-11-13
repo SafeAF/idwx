@@ -266,8 +266,13 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     identity["stations"] = documents
     content = (json.dumps(identity, allow_nan=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     _require(hashlib.sha256(content).hexdigest() == release, "Release ID disagrees with canonical content")
+    projection_included = (
+        b'id="projection-title"' in (root / "index.html").read_bytes()
+        and b"climatologyProjection" in (root / "js/app.js").read_bytes()
+    )
     return {"status": "valid_static_package", "release_id": release, "data_kind": manifest["data_kind"],
-            "stations": len(ids), "annual_records": len(rows), "forecasts_included": False}
+            "stations": len(ids), "annual_records": len(rows), "forecasts_included": False,
+            "climatology_projection_included": projection_included}
 
 
 def verify_web(directory: Path, *, allow_demo: bool = False) -> dict:

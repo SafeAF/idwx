@@ -88,6 +88,12 @@ test('shared URL restores station, threshold, season, units and synthetic notice
   assert.match($('threshold').selectedOptions[0].textContent, /28\.4 °F/);
   assert.equal($('year').value, '2020');
   assert.match($('notice').textContent, /Synthetic demonstration/);
+  assert.match($('projection-title').textContent, /^\d{4} frost projection$/);
+  assert.match($('projection-copy').textContent, /historical median/i);
+  assert.equal($('projection-cards').children.length, 3);
+  assert.match($('projection-cards').textContent, /Historical P10–P90/);
+  assert.match($('projection-cards').textContent, /Projected frost-free span/);
+  assert.match(window.document.querySelector('.projection-disclaimer').textContent, /not a guarantee/i);
   assert.match($('cards').textContent, /Not verified/);
   assert.match($('interval-note').textContent, /July freeze was observed/);
   assert.match($('freshness').textContent, /2022-12-31/);
@@ -113,6 +119,13 @@ test('baseline table shows exported extremes and included/excluded years at the 
       assert.ok(cells[4].textContent.startsWith(`${distribution.status_counts.no_event_in_complete_window ?? 0} complete without an event`));
       assert.ok(cells[4].textContent.includes(`${distribution.status_counts.incomplete_window ?? 0} incomplete`));
     }
+    const projections = $('projection-cards').children;
+    assert.ok(projections[0].textContent.includes(new Intl.DateTimeFormat('en-US', {
+      month: 'short', day: 'numeric', timeZone: 'UTC',
+    }).format(new Date(`2000-${summary.last_spring_frost.p50.month_day}T00:00:00Z`))));
+    assert.ok(projections[1].textContent.includes(new Intl.DateTimeFormat('en-US', {
+      month: 'short', day: 'numeric', timeZone: 'UTC',
+    }).format(new Date(`2000-${summary.first_fall_frost.p50.month_day}T00:00:00Z`))));
   };
   verify(0);
   change('threshold', '-2'); verify(-2);
@@ -137,6 +150,8 @@ test('a short baseline shows observed extremes without inventing typical dates',
     assert.match(row.children[2].textContent, /Earliest to latest/);
     assert.match(row.children[3].textContent, /^2\/2 years/);
   }
+  assert.equal($('projection-cards').querySelectorAll('.text-value').length, 3);
+  assert.match($('projection-cards').textContent, /Not available/);
 });
 
 test('controls render no-event, incomplete, verified and exact threshold states', async t => {
