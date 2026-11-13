@@ -12,11 +12,14 @@ This is seasonal / event forecasting for agriculture.
 
 ## Static frost dashboard delivery
 
-The historical dashboard, exporter, portable package verifier, Nginx template,
-and regression suite are implemented. The website shows a planning-year
-historical climatology projection: P50 is the projected date and P10–P90 is
-the historical range. It does not publish the repository's research model
-predictions or use current weather. The repository includes a compact daily
+The static dashboard, exporter, portable package verifier, Nginx template,
+and regression suite are implemented. The homepage fetches live Twin Falls
+guidance directly in the browser: NWS point guidance is compared with
+Open-Meteo for the first seven days, and Open-Meteo supplies a clearly labeled,
+lower-confidence days 8–14 outlook. This operational guidance is separate from
+the site's planning-year historical climatology projection: P50 is the projected
+date and P10–P90 is the historical range. The site does not publish the repository's
+research model predictions. The repository includes a compact daily
 SQLite database for the Twin Falls ERA5/Oikolab archive, so a real-data static
 site can be built without copying the private 80 MB hourly source to the
 deployment host.
@@ -137,8 +140,8 @@ Without local weather data, generate explicitly labeled synthetic examples:
 uv run idwx export-web --demo --output .tmp/demo-web
 ```
 
-The export includes the complete buildless dashboard: a planning-year
-climatology projection, station/threshold/year controls, unit switching,
+The export includes the complete buildless dashboard: the live two-week weather
+section, a planning-year climatology projection, station/threshold/year controls, unit switching,
 confirmed dates and historical ranges, coverage, an accessible history table,
 and CSV downloads. Open it through an HTTP server:
 
@@ -146,14 +149,15 @@ and CSV downloads. Open it through an HTTP server:
 uv run python -m http.server 8765 --bind 127.0.0.1 --directory .tmp/demo-web
 ```
 
-Visit `http://127.0.0.1:8765/`. The demo is clearly labeled synthetic.
-Selections are saved in the URL for sharing. No external APIs, fonts, or
-frontend build tools are required in production.
+Visit `http://127.0.0.1:8765/`. The historical demo is clearly labeled synthetic.
+Selections are saved in the URL for sharing. The live weather section needs
+browser access to `api.weather.gov` and `api.open-meteo.com`; no third-party
+scripts, fonts, or frontend build tools are required in production.
 
 See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) and
 [deployment and verification instructions](docs/15_DASHBOARD_DEPLOYMENT.md).
-The Nginx configuration is in `deploy/nginx.conf`. Real-source auditing,
-production browser/TLS checks, and forecast validation remain outstanding.
+The Nginx configuration is in `deploy/nginx.conf` and allowlists those two API
+origins in `connect-src`. Research-forecast validation remains separate.
 
 The [forecast correctness audit](docs/16_FORECAST_CORRECTNESS_AUDIT.md) records
 input leakage fixes, required cache rebuilding, and the remaining blockers.

@@ -37,7 +37,7 @@ def test_release_contract_csv_consistency_and_privacy(source):
     assert read_json(output / "data/manifest.json") == manifest
     assert manifest["schema_version"] == "1.0.0"
     assert manifest["data_kind"] == "historical_observations"
-    for name in ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/format.js"):
+    for name in ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js"):
         assert (output / name).read_bytes() == (Path("web") / name).read_bytes()
     assert not (output / "package.json").exists()
     assert manifest["source_coverage"] == {"first_date": "2000-01-01", "last_date": "2022-12-31"}

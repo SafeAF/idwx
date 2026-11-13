@@ -5,7 +5,14 @@
 `web/` contains semantic HTML, responsive CSS, and browser JavaScript modules.
 The exporter installs these assets alongside versioned JSON/CSV, both from
 this checkout and from an installed Python wheel. No frontend build step,
-third-party scripts, external fonts, or weather API calls are required.
+third-party scripts, or external fonts are required. The live weather module
+fetches only `api.weather.gov` and `api.open-meteo.com` from the browser.
+
+The homepage shows current Open-Meteo conditions, active NWS alerts, and a
+14-day outlook for Twin Falls. NWS point guidance is compared with Open-Meteo
+for days 1–7. Days 8–14 are explicitly labeled as a lower-confidence Open-Meteo
+model outlook and are not represented as NWS guidance. Responses are cached in
+the browser for 15 minutes, with a bounded stale fallback after request failure.
 
 The dashboard supports a planning-year historical climatology projection,
 station/threshold/year selection, Celsius/Fahrenheit, shareable URL parameters,
@@ -27,8 +34,9 @@ stations and thresholds from the pinned release.
 Unavailable data, incomplete seasons, missing events, insufficient history,
 and failed requests have explicit states. Old source records and synthetic
 data have prominent notices. Export time and observation freshness are
-displayed separately. No research model forecasts or current-weather estimates
-are shown; the projection is explicitly labeled as historical climatology.
+displayed separately. Live external guidance is visually and semantically
+separate from the archive; no repository research model forecasts are shown,
+and the projection remains explicitly labeled as historical climatology.
 
 ## Local preview
 
@@ -55,7 +63,8 @@ The configuration redirects HTTP to HTTPS and permits TLS 1.2/1.3. It is not
 installed automatically, and no live server credentials have been assumed.
 
 The configuration provides MIME types including an explicit CSV mapping,
-compression, same-origin content restrictions, and real missing-file errors.
+compression, a restrictive policy whose `connect-src` contains only the two
+weather APIs, and real missing-file errors.
 It revalidates frontend assets and the manifest. Immutable release paths
 cache for a year on successful responses; missing files do not receive that
 cache policy. Dotfiles and exporter staging directories are denied.

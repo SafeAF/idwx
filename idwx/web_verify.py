@@ -272,7 +272,10 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     )
     return {"status": "valid_static_package", "release_id": release, "data_kind": manifest["data_kind"],
             "stations": len(ids), "annual_records": len(rows), "forecasts_included": False,
-            "climatology_projection_included": projection_included}
+            "climatology_projection_included": projection_included,
+            "live_weather_guidance_included": b'id="forecast-days"' in (root / "index.html").read_bytes()
+            and b"api.weather.gov" in (root / "js/forecast.js").read_bytes()
+            and b"api.open-meteo.com" in (root / "js/forecast.js").read_bytes()}
 
 
 def verify_web(directory: Path, *, allow_demo: bool = False) -> dict:

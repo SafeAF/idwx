@@ -3,21 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Explore historical Idaho freeze dates, seasonal coverage, and the range of a typical growing season.">
-  <title>Idaho Frost Almanac · IDWX</title>
+  <meta name="description" content="A two-week Twin Falls weather outlook from NWS and Open-Meteo, plus historical Idaho freeze dates and growing-season context.">
+  <title>Twin Falls Weather & Frost Almanac · IDWX</title>
   <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/forecast.js"></script>
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to frost history</a>
+  <a class="skip-link" href="#main">Skip to the forecast</a>
   <header class="site-header wrap">
-    <a class="brand" href="./" aria-label="IDWX Frost Almanac home"><span class="brand-mark" aria-hidden="true">✳</span><span>IDWX <span class="brand-divider">/</span> <span class="brand-name">Frost Almanac</span></span></a>
-    <a href="#methodology" class="header-link">How to read the dates <span aria-hidden="true">↗</span></a>
+    <a class="brand" href="./" aria-label="IDWX Twin Falls weather home"><span class="brand-mark" aria-hidden="true">✳</span><span>IDWX <span class="brand-divider">/</span> <span class="brand-name">Twin Falls Weather</span></span></a>
+    <a href="#historical" class="header-link">Frost history <span aria-hidden="true">↓</span></a>
   </header>
   <main id="main" class="wrap" tabindex="-1">
-    <section class="intro" aria-labelledby="page-title">
+    <section id="forecast" class="forecast" aria-labelledby="forecast-title">
+      <div class="forecast-heading">
+        <div><p class="eyebrow">Twin Falls, Idaho · Live guidance</p><h1 id="forecast-title">The next two weeks,<br>at a glance.</h1></div>
+        <div class="forecast-heading-copy"><p>NWS guidance is paired with a second source for the first seven days. Days 8–14 are a lower-confidence model outlook.</p><button id="forecast-refresh" class="forecast-refresh" type="button">Refresh forecast</button></div>
+      </div>
+      <div id="forecast-status" class="forecast-status" role="status" aria-live="polite">Loading current weather guidance…</div>
+      <div id="forecast-content" hidden>
+        <div id="weather-alerts" class="weather-alerts" aria-live="polite"></div>
+        <section id="current-weather" class="current-weather" aria-label="Current estimated conditions"></section>
+        <div class="forecast-key"><span><i class="source-dot nws"></i>NWS forecast</span><span><i class="source-dot model"></i>Open-Meteo model</span><span>Local time · °F · mph</span></div>
+        <section id="forecast-days" class="forecast-days" aria-label="Fourteen-day weather outlook"></section>
+        <p class="forecast-disclaimer"><strong>Forecasts change.</strong> NWS point guidance covers about seven days. Open-Meteo provides a blended-model comparison and the days 8–14 outlook; those later days carry greater uncertainty and are not an NWS forecast. Check active NWS alerts before making safety decisions.</p>
+      </div>
+    </section>
+    <section id="historical" class="intro historical-intro" aria-labelledby="page-title">
       <p class="eyebrow">Idaho · Historical growing seasons</p>
-      <h1 id="page-title">Every season has<br>a little history.</h1>
+      <h2 id="page-title">Every season has<br>a little history.</h2>
       <p class="intro-copy">Explore a historical outlook for the next planning season, the last freeze of spring, the first freeze of fall, and the days in between. A local record to help put your growing season in perspective.</p>
     </section>
     <div id="notice" class="notice" hidden></div>
@@ -57,6 +72,6 @@
     </div>
     <noscript><p class="notice">JavaScript is needed to explore this archive. You can also read the generated JSON and CSV files under <code>data/</code>.</p></noscript>
   </main>
-  <footer class="wrap"><span>IDWX <span class="brand-divider">/</span> Idaho Frost Almanac</span><span>Historical perspective. Local conditions matter.</span></footer>
+  <footer class="wrap"><span>IDWX <span class="brand-divider">/</span> Twin Falls Weather & Frost Almanac</span><span>Forecast guidance changes. Local conditions matter.</span></footer>
 </body>
 </html>

@@ -22,7 +22,7 @@ from idwx.history import summarize_events
 from idwx.sqlite_store import load_daily_from_sqlite
 
 SCHEMA_VERSION = "1.0.0"
-WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/format.js")
+WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js")
 EVENT_NAMES = ("last_spring_frost", "first_fall_frost")
 NOTICE = (
     "Temperature-based freeze dates are a proxy for frost risk. Surface frost and crop damage "
