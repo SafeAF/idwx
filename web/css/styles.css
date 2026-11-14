@@ -191,14 +191,22 @@ h1 {
 .forecast-key span { display:flex; align-items:center; gap:7px; }
 .source-dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
 .source-dot.nws { background:#f4d89d; }
-.source-dot.model { background:#9dc6b1; }
-.forecast-days { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; padding-top:24px; }
+.source-dot.gfs { background:#9dc6b1; }
+.source-dot.ecmwf { background:#92b9db; }
+.source-dot.history { background:#d39a7b; }
+.forecast-analytics { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:24px; background:rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.22); }
+.analysis-card { padding:18px; background:#244d44; }
+.analysis-label { margin-bottom:6px; color:#b9c9bf; font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.analysis-value { margin-bottom:4px; color:#fffdf5; font-family:Georgia,serif; font-size:1.8rem; line-height:1; }
+.analysis-detail { margin:0; color:#cbd7cf; font-size:.68rem; line-height:1.4; }
+.forecast-days { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; padding-top:24px; }
 .forecast-day { padding:20px; color:var(--ink); background:#fffef9; border-top:4px solid #ddc889; }
 .forecast-day.extended { background:#f0eee4; border-top-color:#9aab9d; }
 .day-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
 .day-name { margin:0; font-weight:700; font-size:1rem; }
 .day-date { margin:0; color:var(--muted); font-size:.72rem; }
 .day-symbol { font-size:1.75rem; line-height:1; }
+.agreement-badge { margin-left:auto; padding:4px 8px; border:1px solid var(--line); border-radius:20px; color:var(--muted); font-size:.61rem; white-space:nowrap; }
 .day-summary { height:42px; margin:13px 0 2px; color:var(--muted); font-size:.78rem; line-height:1.35; }
 .day-temps { margin-bottom:16px; font-family:Georgia,serif; color:#69736c; font-size:1.65rem; }
 .day-temps strong { color:var(--ink); font-size:2.25rem; font-weight:400; }
@@ -210,6 +218,11 @@ h1 {
 .source-comparison p { margin-bottom:4px; }
 .source-name { text-transform:uppercase; letter-spacing:.07em; font-size:.62rem; font-weight:700; }
 .source-wind { color:var(--muted); }
+.source-row { display:grid; grid-template-columns:1.15fr .75fr .9fr 1fr; gap:8px; padding:8px 0; border-top:1px solid #d9ded3; align-items:start; }
+.source-row span { color:var(--muted); }
+.source-label { font-size:.72rem; }
+.history-row { border-top-style:dashed; }
+.history-row .source-label { color:var(--rust); }
 .day-details { margin-top:12px; padding-top:10px; border-top:1px solid var(--line); font-size:.72rem; }
 .day-details summary { font-size:.7rem; }
 .day-details p { margin:9px 0 0; color:var(--muted); }
@@ -715,6 +728,9 @@ footer {
   .current-details { grid-template-columns:1fr 1fr; }
   .forecast-days { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; margin-inline:-20px; padding-inline:20px; }
   .forecast-day { flex:0 0 min(82vw,310px); scroll-snap-align:start; }
+  .forecast-analytics { grid-template-columns:1fr 1fr; }
+  .analysis-card { padding:14px; }
+  .source-row { grid-template-columns:1fr 1fr; gap:4px 8px; }
   .weather-alert { flex-direction:column; gap:3px; }
   .intro-copy {
     max-width:100%;

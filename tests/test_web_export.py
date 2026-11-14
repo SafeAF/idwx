@@ -56,6 +56,12 @@ def test_release_contract_csv_consistency_and_privacy(source):
         assert doc["release_id"] == manifest["release_id"]
         assert len(doc["annual"]) == 46
         assert doc["summaries"][0]["last_spring_frost"]["status"] == "available"
+        climate = doc["temperature_climatology"]
+        assert climate["baseline_period"] == {"start_year": 2000, "end_year": 2022}
+        assert len(climate["days"]) == 366
+        january = next(day for day in climate["days"] if day["month_day"] == "01-01")
+        assert january["sample_count"] == 23
+        assert january["low_c"]["p10"] <= january["low_c"]["p50"] <= january["low_c"]["p90"]
     partial = next(row for row in documents[0]["annual"] if row["season_year"] == 2021 and row["threshold_c"] == 0)
     assert partial["last_spring_frost"]["date"] is None
     assert partial["last_spring_frost"]["candidate_date"] == "2021-05-02"

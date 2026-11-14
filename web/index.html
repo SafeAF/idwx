@@ -18,16 +18,17 @@
   <main id="main" class="wrap" tabindex="-1">
     <section id="forecast" class="forecast" aria-labelledby="forecast-title">
       <div class="forecast-heading">
-        <div><p class="eyebrow">Twin Falls, Idaho · Live guidance</p><h1 id="forecast-title">The next two weeks,<br>at a glance.</h1></div>
-        <div class="forecast-heading-copy"><p>NWS guidance is paired with a second source for the first seven days. Days 8–14 are a lower-confidence model outlook.</p><button id="forecast-refresh" class="forecast-refresh" type="button">Refresh forecast</button></div>
+        <div><p class="eyebrow">Twin Falls, Idaho · Multi-model analysis</p><h1 id="forecast-title">The next two weeks,<br>source by source.</h1></div>
+        <div class="forecast-heading-copy"><p>Compare NWS, NOAA GFS/RRFS, and ECMWF IFS against IDWX’s 1980–2025 historical temperature baseline. Model spread makes disagreement visible.</p><button id="forecast-refresh" class="forecast-refresh" type="button">Refresh analysis</button></div>
       </div>
       <div id="forecast-status" class="forecast-status" role="status" aria-live="polite">Loading current weather guidance…</div>
       <div id="forecast-content" hidden>
         <div id="weather-alerts" class="weather-alerts" aria-live="polite"></div>
         <section id="current-weather" class="current-weather" aria-label="Current estimated conditions"></section>
-        <div class="forecast-key"><span><i class="source-dot nws"></i>NWS forecast</span><span><i class="source-dot model"></i>Open-Meteo model</span><span>Local time · °F · mph</span></div>
+        <div class="forecast-key"><span><i class="source-dot nws"></i>NWS</span><span><i class="source-dot gfs"></i>NOAA GFS/RRFS</span><span><i class="source-dot ecmwf"></i>ECMWF IFS</span><span><i class="source-dot history"></i>IDWX history</span><span>Local time · °F · mph</span></div>
+        <section id="forecast-analytics" class="forecast-analytics" aria-label="Forecast agreement analytics"></section>
         <section id="forecast-days" class="forecast-days" aria-label="Fourteen-day weather outlook"></section>
-        <p class="forecast-disclaimer"><strong>Forecasts change.</strong> NWS point guidance covers about seven days. Open-Meteo provides a blended-model comparison and the days 8–14 outlook; those later days carry greater uncertainty and are not an NWS forecast. Check active NWS alerts before making safety decisions.</p>
+        <p class="forecast-disclaimer"><strong>Forecasts change.</strong> NWS point guidance covers about seven days. GFS/RRFS and ECMWF continue through day 14 via model-specific Open-Meteo delivery. “Consensus” is a simple mean, not an endorsed forecast; spread is a disagreement signal, not calibrated uncertainty. IDWX values are calendar-day historical quantiles—not current-weather predictions. Check active NWS alerts before safety decisions.</p>
       </div>
     </section>
     <section id="historical" class="intro historical-intro" aria-labelledby="page-title">

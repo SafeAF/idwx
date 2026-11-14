@@ -71,6 +71,35 @@ def _event(row: dict) -> dict:
     }
 
 
+def _temperature_climatology(df: pd.DataFrame, baseline: tuple[int, int]) -> dict:
+    """Publish calendar-day temperature distributions, never raw observations."""
+    frame = df.loc[df.index.year.to_series(index=df.index).between(*baseline)].copy()
+    for key in ("tmin_c", "tmax_c", "tmean_c"):
+        if key not in frame:
+            frame[key] = np.nan
+        frame[key] = pd.to_numeric(frame[key], errors="coerce")
+        frame.loc[~np.isfinite(frame[key]), key] = np.nan
+    if "quality_flags" in frame:
+        invalid = frame["quality_flags"].fillna("").str.contains("insufficient_coverage", regex=False)
+        frame.loc[invalid, ["tmin_c", "tmax_c", "tmean_c"]] = np.nan
+    frame["month_day"] = frame.index.strftime("%m-%d")
+    days = []
+    for month_day, group in frame.groupby("month_day", sort=True):
+        paired = group.dropna(subset=["tmin_c", "tmax_c", "tmean_c"])
+        if len(paired) < 5:
+            continue
+        row = {"month_day": month_day, "sample_count": len(paired)}
+        for output, source in (("low_c", "tmin_c"), ("high_c", "tmax_c"), ("mean_c", "tmean_c")):
+            quantiles = paired[source].quantile([0.1, 0.5, 0.9])
+            row[output] = {f"p{int(q * 100)}": float(quantiles.loc[q]) for q in (0.1, 0.5, 0.9)}
+        days.append(row)
+    return {
+        "baseline_period": {"start_year": baseline[0], "end_year": baseline[1]},
+        "method": "Calendar-day P10, P50, and P90 from paired complete daily temperatures; historical climatology, not a weather model.",
+        "days": days,
+    }
+
+
 def station_history(daily: pd.DataFrame, station: StationMeta, cfg: Config,
                     baseline: tuple[int, int], min_years: int) -> dict:
     df = validated_daily(daily, station.station_id)
@@ -119,6 +148,7 @@ def station_history(daily: pd.DataFrame, station: StationMeta, cfg: Config,
         "season_years": {"start_year": start, "end_year": end},
         "windows": {**cfg.windows, **cfg.station_windows.get(station.station_id, {})},
         "thresholds_c": cfg.frost_thresholds_c, "annual": annual, "summaries": summaries,
+        "temperature_climatology": _temperature_climatology(df, baseline),
     })
 
 
@@ -143,7 +173,9 @@ def _csv(documents: list[dict], common: dict) -> bytes:
 def demo_daily(station_id: str) -> pd.DataFrame:
     """Deterministic synthetic fixtures, never a replacement for real observations."""
     dates = pd.date_range("2000-01-01", "2022-12-31")
-    df = pd.DataFrame({"station_id": station_id, "date": dates, "tmin_c": 8.0})
+    seasonal = np.sin(2 * np.pi * (dates.day_of_year.to_numpy() - 172) / 365.25)
+    df = pd.DataFrame({"station_id": station_id, "date": dates, "tmin_c": 8 + 4 * seasonal,
+                       "tmax_c": 18 + 6 * seasonal, "tmean_c": 13 + 5 * seasonal})
     for year in range(2000, 2023):
         spring = pd.Timestamp(year=year, month=5, day=1 + year % 20)
         fall = pd.Timestamp(year=year, month=9, day=1 + year % 25)

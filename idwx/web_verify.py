@@ -17,7 +17,7 @@ from idwx.history import summarize_events
 from idwx.web_export import EVENT_NAMES, SCHEMA_VERSION, WEB_ASSETS
 
 COMMON = {"schema_version", "release_id", "data_kind", "methodology"}
-STATION_FIELDS = {"station", "source_coverage", "season_years", "windows", "thresholds_c", "annual", "summaries"}
+STATION_FIELDS = {"station", "source_coverage", "season_years", "windows", "thresholds_c", "annual", "summaries", "temperature_climatology"}
 EVENT_FIELDS = {"status", "date", "tmin_c", "candidate_date", "candidate_tmin_c", "window_start", "window_end",
                 "expected_days", "valid_days", "missing_days", "coverage_fraction"}
 EVENT_STATUSES = {"observed", "no_event_in_complete_window", "incomplete_window", "insufficient_data"}
@@ -165,6 +165,25 @@ def _station(document: dict, manifest: dict, expected_station: dict) -> None:
     annual, summaries = document["annual"], document["summaries"]
     _require(isinstance(annual, list) and isinstance(summaries, list), "Missing historical arrays")
     _require(all(isinstance(summary, dict) for summary in summaries), "Invalid threshold summaries")
+    climatology = document["temperature_climatology"]
+    _keys(climatology, {"baseline_period", "method", "days"}, "temperature climatology")
+    _keys(climatology["baseline_period"], {"start_year", "end_year"}, "temperature baseline")
+    ca, cb = climatology["baseline_period"]["start_year"], climatology["baseline_period"]["end_year"]
+    _require(_integer(ca, start) and _integer(cb, ca) and cb <= end and isinstance(climatology["method"], str), "Invalid temperature baseline")
+    _require(isinstance(climatology["days"], list) and len(climatology["days"]) in {365, 366}, "Incomplete temperature climatology")
+    month_days = set()
+    for day in climatology["days"]:
+        _keys(day, {"month_day", "sample_count", "low_c", "high_c", "mean_c"}, "temperature climatology day")
+        month_day = day["month_day"]
+        _require(isinstance(month_day, str) and re.fullmatch(r"\d{2}-\d{2}", month_day)
+                 and month_day not in month_days and _integer(day["sample_count"], 5), "Invalid climatology calendar day")
+        _date(f"2000-{month_day}")
+        month_days.add(month_day)
+        for key in ("low_c", "high_c", "mean_c"):
+            values = day[key]
+            _keys(values, {"p10", "p50", "p90"}, "temperature quantiles")
+            _require(all(_number(values[q]) for q in ("p10", "p50", "p90"))
+                     and values["p10"] <= values["p50"] <= values["p90"], "Invalid temperature quantiles")
     seen = set()
     for row in annual:
         _keys(row, {"season_year", "threshold_c", *EVENT_NAMES, "interval"}, "annual record")
@@ -275,7 +294,9 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
             "climatology_projection_included": projection_included,
             "live_weather_guidance_included": b'id="forecast-days"' in (root / "index.html").read_bytes()
             and b"api.weather.gov" in (root / "js/forecast.js").read_bytes()
-            and b"api.open-meteo.com" in (root / "js/forecast.js").read_bytes()}
+            and b"gfs_seamless" in (root / "js/forecast.js").read_bytes()
+            and b"ecmwf_ifs025" in (root / "js/forecast.js").read_bytes(),
+            "temperature_climatology_included": all("temperature_climatology" in document for document in documents)}
 
 
 def verify_web(directory: Path, *, allow_demo: bool = False) -> dict:

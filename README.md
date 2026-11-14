@@ -14,9 +14,11 @@ This is seasonal / event forecasting for agriculture.
 
 The static dashboard, exporter, portable package verifier, Nginx template,
 and regression suite are implemented. The homepage fetches live Twin Falls
-guidance directly in the browser: NWS point guidance is compared with
-Open-Meteo for the first seven days, and Open-Meteo supplies a clearly labeled,
-lower-confidence days 8–14 outlook. This operational guidance is separate from
+guidance directly in the browser: NWS point guidance is compared with NOAA
+GFS/RRFS and ECMWF IFS, delivered through model-specific Open-Meteo requests.
+Daily source matrices, consensus temperatures, model spread, and anomalies
+against IDWX calendar-day temperature climatology make disagreements visible.
+NWS ends near day 7 while the two global models continue through day 14. This operational guidance is separate from
 the site's planning-year historical climatology projection: P50 is the projected
 date and P10–P90 is the historical range. The site does not publish the repository's
 research model predictions. The repository includes a compact daily

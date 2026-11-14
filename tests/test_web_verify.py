@@ -51,6 +51,7 @@ def test_verifier_requires_explicit_demo_and_cli_reports_its_scope(publication):
     assert report["forecasts_included"] is False
     assert report["climatology_projection_included"] is True
     assert report["live_weather_guidance_included"] is True
+    assert report["temperature_climatology_included"] is True
     runner = CliRunner()
     invalid = runner.invoke(app, ["verify-web", str(root)])
     assert invalid.exit_code != 0 and "--allow-demo" in invalid.output

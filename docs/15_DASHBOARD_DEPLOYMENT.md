@@ -8,11 +8,16 @@ this checkout and from an installed Python wheel. No frontend build step,
 third-party scripts, or external fonts are required. The live weather module
 fetches only `api.weather.gov` and `api.open-meteo.com` from the browser.
 
-The homepage shows current Open-Meteo conditions, active NWS alerts, and a
-14-day outlook for Twin Falls. NWS point guidance is compared with Open-Meteo
-for days 1–7. Days 8–14 are explicitly labeled as a lower-confidence Open-Meteo
-model outlook and are not represented as NWS guidance. Responses are cached in
-the browser for 15 minutes, with a bounded stale fallback after request failure.
+The homepage shows current GFS/RRFS conditions, active NWS alerts, and a
+14-day outlook for Twin Falls. It compares three distinct forecast systems:
+NWS point guidance, NOAA GFS/RRFS, and ECMWF IFS. The latter two are delivered
+through model-specific Open-Meteo requests and continue through day 14; NWS
+ends near day 7. Daily source matrices show consensus temperatures, source
+spread, precipitation and wind. IDWX calendar-day P10/P50/P90 high/low
+climatology is derived from the same reviewed baseline as the historical site
+and shown separately as a historical temperature outlook, not a live model.
+Responses are cached in the browser for 15 minutes, with a bounded stale
+fallback after request failure.
 
 The dashboard supports a planning-year historical climatology projection,
 station/threshold/year selection, Celsius/Fahrenheit, shareable URL parameters,
