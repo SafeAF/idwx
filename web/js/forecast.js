@@ -18,7 +18,7 @@ function modelUrl(model, daily, current = null) {
 const GFS = modelUrl('gfs_seamless', DAILY_DETAIL,
   'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m');
 const ECMWF = modelUrl('ecmwf_ifs025', DAILY_CORE);
-const CACHE_KEY = 'idwx-weather-analysis-v3';
+const CACHE_KEY = 'idwx-weather-analysis-v4';
 const FRESH_MS = 15 * 60 * 1000;
 const STALE_MS = 6 * 60 * 60 * 1000;
 
@@ -224,7 +224,6 @@ async function fetchLive() {
   const [gfsResult, ecmwfResult, pointResult, alertResult, observationResult, climateResult] = await Promise.allSettled([
     responseJson(GFS), responseJson(ECMWF), responseJson(NWS_POINT), responseJson(NWS_ALERTS), responseJson(NWS_OBSERVATION), fetchClimatology(),
   ]);
-  if (gfsResult.status === 'rejected' && ecmwfResult.status === 'rejected') throw new Error('NOAA GFS/RRFS and ECMWF IFS are both unavailable');
   let nws = null, nwsError = null;
   if (pointResult.status === 'fulfilled') {
     try { nws = await responseJson(pointResult.value?.properties?.forecast); } catch (error) { nwsError = error.message; }
@@ -233,6 +232,9 @@ async function fetchLive() {
   if (observationResult.status === 'fulfilled') {
     try { currentObservation = normalizeNwsObservation(observationResult.value); } catch (error) { observationError = error.message; }
   } else observationError = observationResult.reason.message;
+  if (gfsResult.status === 'rejected' && ecmwfResult.status === 'rejected' && !currentObservation) {
+    throw new Error('NWS current observation, NOAA GFS/RRFS, and ECMWF IFS are unavailable');
+  }
   return {
     fetchedAt: Date.now(), gfs: gfsResult.status === 'fulfilled' ? gfsResult.value : null,
     ecmwf: ecmwfResult.status === 'fulfilled' ? ecmwfResult.value : null, nws,
@@ -278,7 +280,8 @@ function renderCurrent(current, fetchedAt, sourceCount, observed = false) {
     metric('Gusts', Number.isFinite(current.gust) ? `${round(current.gust)} mph` : '—'));
   const meta = element('div', 'current-meta');
   meta.append(element('p', 'eyebrow', observed ? current.source : 'Conditions now · GFS/RRFS fallback'), element('p', '', `${observed ? 'Observed' : 'Model estimate'} at ${timeLabel(current.time)} · Updated ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Boise' }).format(new Date(fetchedAt))}`),
-    element('p', 'small', `${sourceCount} live forecast sources are compared below.`)); target.replaceChildren(meta, primary, details);
+    element('p', 'small', sourceCount ? `${sourceCount} live forecast sources are compared below.` : 'Live forecast models are temporarily unavailable.'));
+  target.replaceChildren(meta, primary, details);
 }
 
 function renderAnalytics(days) {
@@ -330,7 +333,18 @@ function renderDays(days) {
   });
 }
 
-function render(data, stale = false) {
+export function renderForecast(data, stale = false) {
+  if (!data.gfs && !data.ecmwf) {
+    renderAlerts(data.alerts || []);
+    renderCurrent(data.currentObservation, data.fetchedAt, 0, true);
+    document.getElementById('forecast-analytics').replaceChildren();
+    document.getElementById('forecast-days').replaceChildren();
+    document.getElementById('forecast-content').hidden = false;
+    const status = document.getElementById('forecast-status');
+    status.classList.add('error');
+    status.textContent = 'The 14-day model feeds are temporarily unavailable; showing the latest NWS KTWF observation. The historical archive remains available below.';
+    return;
+  }
   const merged = mergeForecast(data.gfs, data.ecmwf, data.nws, data.climatology);
   const current = data.currentObservation || merged.current;
   renderAlerts(data.alerts || []); renderCurrent(current, data.fetchedAt, Math.max(...merged.days.map(day => day.sources.length)), Boolean(data.currentObservation)); renderAnalytics(merged.days); renderDays(merged.days);
@@ -345,9 +359,13 @@ function render(data, stale = false) {
 export async function loadForecast({ force = false } = {}) {
   const button = document.getElementById('forecast-refresh'), status = document.getElementById('forecast-status'); if (!button || !status) return;
   button.disabled = true; status.classList.remove('error'); status.textContent = 'Loading three forecast sources and IDWX history…';
-  if (!force) { const fresh = cached(FRESH_MS); if (fresh) { render(fresh); button.disabled = false; return; } }
-  try { const data = await fetchLive(); try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch { /* optional */ } render(data); }
-  catch (error) { const stale = cached(STALE_MS); if (stale) render(stale, true); else { status.classList.add('error'); status.textContent = `Forecast unavailable right now: ${error.message}. The historical archive remains available below.`; } }
+  if (!force) { const fresh = cached(FRESH_MS); if (fresh) { renderForecast(fresh); button.disabled = false; return; } }
+  try {
+    const data = await fetchLive();
+    if (data.gfs || data.ecmwf) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch { /* optional */ } }
+    renderForecast(data);
+  }
+  catch (error) { const stale = cached(STALE_MS); if (stale) renderForecast(stale, true); else { status.classList.add('error'); status.textContent = `Forecast unavailable right now: ${error.message}. The historical archive remains available below.`; } }
   finally { button.disabled = false; }
 }
 

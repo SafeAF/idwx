@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { forecastAnalytics, mergeForecast, normalizeModel, normalizeNws, normalizeNwsObservation, normalizeOpenMeteo } from '../js/forecast.js';
+import { JSDOM } from 'jsdom';
+import { forecastAnalytics, mergeForecast, normalizeModel, normalizeNws, normalizeNwsObservation, normalizeOpenMeteo, renderForecast } from '../js/forecast.js';
 
 function openMeteo() {
   const keys = [
@@ -78,6 +79,22 @@ test('latest NWS station observation reports rain and converts SI values for cur
 test('stale or incomplete NWS observations fail closed so the model fallback can be used', () => {
   assert.throws(() => normalizeNwsObservation(observation(), Date.parse('2026-11-16T04:00:00Z')), /stale/);
   assert.throws(() => normalizeNwsObservation({ properties: { timestamp: '2026-11-16T00:53:00Z' } }, Date.parse('2026-11-16T01:00:00Z')), /no temperature/);
+});
+
+test('a current NWS observation remains visible when both model feeds are unavailable', () => {
+  const dom = new JSDOM(`
+    <div id="forecast-status"></div><div id="forecast-content" hidden>
+      <div id="weather-alerts"></div><section id="current-weather"></section>
+      <section id="forecast-analytics"></section><section id="forecast-days"></section>
+    </div>`);
+  global.document = dom.window.document;
+  const currentObservation = normalizeNwsObservation(observation(), Date.parse('2026-11-16T01:00:00Z'));
+  renderForecast({ gfs: null, ecmwf: null, currentObservation, fetchedAt: Date.parse('2026-11-16T01:00:00Z'), alerts: [] });
+  assert.equal(document.querySelector('.current-summary').textContent, 'Rain');
+  assert.equal(document.querySelector('.current-meta .eyebrow').textContent, 'NWS observation · KTWF');
+  assert.equal(document.querySelector('#forecast-content').hidden, false);
+  assert.match(document.querySelector('#forecast-status').textContent, /model feeds are temporarily unavailable/);
+  delete global.document;
 });
 
 test('merged outlook compares three live sources, history and marks days eight through fourteen extended', () => {
