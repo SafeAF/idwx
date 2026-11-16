@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { forecastAnalytics, mergeForecast, normalizeModel, normalizeNws, normalizeOpenMeteo } from '../js/forecast.js';
+import { forecastAnalytics, mergeForecast, normalizeModel, normalizeNws, normalizeNwsObservation, normalizeOpenMeteo } from '../js/forecast.js';
 
 function openMeteo() {
   const keys = [
@@ -22,6 +22,19 @@ function nws() {
     { name: 'Friday Night', startTime: '2026-11-13T18:00:00-07:00', isDaytime: false, temperature: 38,
       probabilityOfPrecipitation: { value: 40 }, windSpeed: '5 mph', windDirection: 'SW', shortForecast: 'Showers', detailedForecast: 'A chance of rain.' },
   ] } };
+}
+
+function observation(description = 'Rain') {
+  return { properties: {
+    timestamp: '2026-11-16T00:53:00Z', textDescription: description,
+    temperature: { unitCode: 'wmoUnit:degC', value: 9 },
+    windChill: { unitCode: 'wmoUnit:degC', value: 6 },
+    heatIndex: { unitCode: 'wmoUnit:degC', value: null },
+    relativeHumidity: { unitCode: 'wmoUnit:percent', value: 45 },
+    windDirection: { unitCode: 'wmoUnit:degree_(angle)', value: 160 },
+    windSpeed: { unitCode: 'wmoUnit:km_h-1', value: 27.78 },
+    windGust: { unitCode: 'wmoUnit:km_h-1', value: null },
+  } };
 }
 
 function ecmwf() {
@@ -51,6 +64,20 @@ test('NWS day and night periods are paired by local date', () => {
   const result = normalizeNws(nws());
   assert.equal(result.byDate.get('2026-11-13').day.temperature, 60);
   assert.equal(result.byDate.get('2026-11-13').night.temperature, 38);
+});
+
+test('latest NWS station observation reports rain and converts SI values for current conditions', () => {
+  const result = normalizeNwsObservation(observation(), Date.parse('2026-11-16T01:00:00Z'));
+  assert.equal(result.source, 'NWS observation · KTWF');
+  assert.equal(result.description, 'Rain');
+  assert.equal(result.symbol, '🌧');
+  assert.equal(result.temperature, 48.2);
+  assert.ok(Math.abs(result.wind - 17.26) < 0.01);
+});
+
+test('stale or incomplete NWS observations fail closed so the model fallback can be used', () => {
+  assert.throws(() => normalizeNwsObservation(observation(), Date.parse('2026-11-16T04:00:00Z')), /stale/);
+  assert.throws(() => normalizeNwsObservation({ properties: { timestamp: '2026-11-16T00:53:00Z' } }, Date.parse('2026-11-16T01:00:00Z')), /no temperature/);
 });
 
 test('merged outlook compares three live sources, history and marks days eight through fourteen extended', () => {

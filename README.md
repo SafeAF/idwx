@@ -14,7 +14,8 @@ This is seasonal / event forecasting for agriculture.
 
 The static dashboard, exporter, portable package verifier, Nginx template,
 and regression suite are implemented. The homepage fetches live Twin Falls
-guidance directly in the browser: NWS point guidance is compared with NOAA
+guidance directly in the browser: the latest NWS KTWF airport observation
+supplies current conditions, and NWS point guidance is compared with NOAA
 GFS/RRFS and ECMWF IFS, delivered through model-specific Open-Meteo requests.
 Daily source matrices, consensus temperatures, model spread, and anomalies
 against IDWX calendar-day temperature climatology make disagreements visible.

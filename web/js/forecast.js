@@ -1,6 +1,7 @@
 const LOCATION = { latitude: 42.4634, longitude: -114.4975, name: 'Twin Falls' };
 const NWS_POINT = `https://api.weather.gov/points/${LOCATION.latitude},${LOCATION.longitude}`;
 const NWS_ALERTS = `https://api.weather.gov/alerts/active?point=${LOCATION.latitude},${LOCATION.longitude}`;
+const NWS_OBSERVATION = 'https://api.weather.gov/stations/KTWF/observations/latest';
 const DAILY_CORE = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant';
 const DAILY_DETAIL = `${DAILY_CORE},apparent_temperature_max,apparent_temperature_min,relative_humidity_2m_mean,dew_point_2m_mean,visibility_mean,uv_index_max,sunrise,sunset`;
 
@@ -17,7 +18,7 @@ function modelUrl(model, daily, current = null) {
 const GFS = modelUrl('gfs_seamless', DAILY_DETAIL,
   'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m');
 const ECMWF = modelUrl('ecmwf_ifs025', DAILY_CORE);
-const CACHE_KEY = 'idwx-weather-analysis-v2';
+const CACHE_KEY = 'idwx-weather-analysis-v3';
 const FRESH_MS = 15 * 60 * 1000;
 const STALE_MS = 6 * 60 * 60 * 1000;
 
@@ -45,11 +46,15 @@ const text = value => value == null ? '—' : String(value);
 const temperature = value => Number.isFinite(value) ? `${Math.round(value)}°` : '—';
 const signedTemperature = value => Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${Math.round(value)}°` : '—';
 const amount = value => Number.isFinite(value) ? (value < 0.01 ? '<0.01 in' : `${value.toFixed(2)} in`) : '—';
-const compass = degrees => Number.isFinite(degrees) ? ['N','NE','E','SE','S','SW','W','NW'][Math.round(degrees / 45) % 8] : '—';
+const compass = degrees => Number.isFinite(degrees) ? ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(degrees / 22.5) % 16] : '—';
 const weather = code => WEATHER[code] || ['Variable', '◌'];
 const cToF = value => Number.isFinite(value) ? value * 9 / 5 + 32 : null;
 const dateLabel = (date, options) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Boise', ...options }).format(new Date(`${date}T12:00:00-07:00`));
-const timeLabel = value => value ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Boise' }).format(new Date(`${value}:00-07:00`)) : '—';
+const timeLabel = value => {
+  if (!value) return '—';
+  const zoned = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}:00-07:00`;
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Boise' }).format(new Date(zoned));
+};
 const mph = value => {
   const numbers = String(value || '').match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
   return numbers.length ? Math.max(...numbers) : null;
@@ -98,6 +103,48 @@ export function normalizeNws(payload) {
     byDate.set(date, day);
   }
   return { generatedAt: payload.properties.generatedAt, updatedAt: payload.properties.updateTime, byDate };
+}
+
+function observationValue(properties, key) {
+  const value = properties?.[key]?.value;
+  return Number.isFinite(value) ? value : null;
+}
+
+function observationSymbol(description) {
+  const value = String(description || '').toLowerCase();
+  if (/thunder/.test(value)) return '⛈';
+  if (/snow|ice|freezing/.test(value)) return '❄';
+  if (/rain|shower|drizzle/.test(value)) return '🌧';
+  if (/fog|mist|haze/.test(value)) return '≋';
+  if (/partly|mostly/.test(value)) return '⛅';
+  if (/cloud|overcast/.test(value)) return '☁';
+  if (/clear|fair|sunny/.test(value)) return '☀';
+  return '◌';
+}
+
+export function normalizeNwsObservation(payload, now = Date.now()) {
+  const properties = payload?.properties;
+  const timestamp = properties?.timestamp;
+  const observedAt = Date.parse(timestamp);
+  if (!properties || !Number.isFinite(observedAt)) throw new Error('NWS returned an incomplete current observation');
+  const ageMs = now - observedAt;
+  if (ageMs < -15 * 60 * 1000 || ageMs > 2 * 60 * 60 * 1000) throw new Error('NWS current observation is stale');
+  const temperatureC = observationValue(properties, 'temperature');
+  if (!Number.isFinite(temperatureC)) throw new Error('NWS current observation has no temperature');
+  const windChillC = observationValue(properties, 'windChill');
+  const heatIndexC = observationValue(properties, 'heatIndex');
+  const windKph = observationValue(properties, 'windSpeed');
+  const gustKph = observationValue(properties, 'windGust');
+  const description = properties.textDescription || 'Observed conditions';
+  return {
+    source: 'NWS observation · KTWF', station: 'KTWF', time: timestamp, description,
+    symbol: observationSymbol(description), temperature: cToF(temperatureC),
+    apparent: cToF(windChillC ?? heatIndexC ?? temperatureC),
+    humidity: observationValue(properties, 'relativeHumidity'),
+    wind: Number.isFinite(windKph) ? windKph * 0.621371 : null,
+    windDirection: observationValue(properties, 'windDirection'),
+    gust: Number.isFinite(gustKph) ? gustKph * 0.621371 : null,
+  };
 }
 
 function nwsSource(day) {
@@ -174,18 +221,23 @@ async function fetchClimatology() {
 }
 
 async function fetchLive() {
-  const [gfsResult, ecmwfResult, pointResult, alertResult, climateResult] = await Promise.allSettled([
-    responseJson(GFS), responseJson(ECMWF), responseJson(NWS_POINT), responseJson(NWS_ALERTS), fetchClimatology(),
+  const [gfsResult, ecmwfResult, pointResult, alertResult, observationResult, climateResult] = await Promise.allSettled([
+    responseJson(GFS), responseJson(ECMWF), responseJson(NWS_POINT), responseJson(NWS_ALERTS), responseJson(NWS_OBSERVATION), fetchClimatology(),
   ]);
   if (gfsResult.status === 'rejected' && ecmwfResult.status === 'rejected') throw new Error('NOAA GFS/RRFS and ECMWF IFS are both unavailable');
   let nws = null, nwsError = null;
   if (pointResult.status === 'fulfilled') {
     try { nws = await responseJson(pointResult.value?.properties?.forecast); } catch (error) { nwsError = error.message; }
   } else nwsError = pointResult.reason.message;
+  let currentObservation = null, observationError = null;
+  if (observationResult.status === 'fulfilled') {
+    try { currentObservation = normalizeNwsObservation(observationResult.value); } catch (error) { observationError = error.message; }
+  } else observationError = observationResult.reason.message;
   return {
     fetchedAt: Date.now(), gfs: gfsResult.status === 'fulfilled' ? gfsResult.value : null,
     ecmwf: ecmwfResult.status === 'fulfilled' ? ecmwfResult.value : null, nws,
     alerts: alertResult.status === 'fulfilled' ? alertResult.value.features || [] : [],
+    currentObservation, observationError,
     climatology: climateResult.status === 'fulfilled' ? climateResult.value : null,
     errors: [gfsResult, ecmwfResult, climateResult].filter(result => result.status === 'rejected').map(result => result.reason.message), nwsError,
   };
@@ -213,17 +265,19 @@ function renderAlerts(features) {
   }
 }
 
-function renderCurrent(current, fetchedAt, sourceCount) {
+function renderCurrent(current, fetchedAt, sourceCount, observed = false) {
   const target = document.getElementById('current-weather');
   if (!current) { target.replaceChildren(element('p', '', 'Current conditions are temporarily unavailable; daily model comparisons remain below.')); return; }
-  const [description, symbol] = weather(current.code), primary = element('div', 'current-primary');
+  const [modelDescription, modelSymbol] = weather(current.code), description = current.description || modelDescription;
+  const symbol = current.symbol || modelSymbol, primary = element('div', 'current-primary');
   primary.append(element('span', 'weather-symbol', symbol));
   const copy = element('div'); copy.append(element('p', 'current-temp', temperature(current.temperature)), element('p', 'current-summary', description)); primary.append(copy);
   const details = element('div', 'current-details');
-  details.append(metric('Feels like', temperature(current.apparent)), metric('Humidity', `${text(round(current.humidity))}%`),
-    metric('Wind', `${compass(current.windDirection)} ${text(round(current.wind))} mph`), metric('Gusts', `${text(round(current.gust))} mph`));
+  details.append(metric('Feels like', temperature(current.apparent)), metric('Humidity', Number.isFinite(current.humidity) ? `${round(current.humidity)}%` : '—'),
+    metric('Wind', Number.isFinite(current.wind) ? `${compass(current.windDirection)} ${round(current.wind)} mph` : '—'),
+    metric('Gusts', Number.isFinite(current.gust) ? `${round(current.gust)} mph` : '—'));
   const meta = element('div', 'current-meta');
-  meta.append(element('p', 'eyebrow', 'Conditions now · GFS/RRFS'), element('p', '', `Model estimate at ${timeLabel(current.time)} · Updated ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Boise' }).format(new Date(fetchedAt))}`),
+  meta.append(element('p', 'eyebrow', observed ? current.source : 'Conditions now · GFS/RRFS fallback'), element('p', '', `${observed ? 'Observed' : 'Model estimate'} at ${timeLabel(current.time)} · Updated ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Boise' }).format(new Date(fetchedAt))}`),
     element('p', 'small', `${sourceCount} live forecast sources are compared below.`)); target.replaceChildren(meta, primary, details);
 }
 
@@ -261,7 +315,7 @@ function renderDays(days) {
     title.append(element('p', 'day-name', index === 0 ? 'Today' : dateLabel(day.date, { weekday: 'short' })), element('p', 'day-date', dateLabel(day.date, { month: 'short', day: 'numeric' })));
     heading.append(title, element('span', 'agreement-badge', `${day.consensus.agreement} agreement`), element('span', 'day-symbol', symbol));
     const temps = element('p', 'day-temps'); temps.append(element('strong', '', temperature(day.consensus.high)), document.createTextNode(` / ${temperature(day.consensus.low)}`));
-    card.append(heading, element('p', 'day-summary', `${description} · ${day.consensus.sourceCount}-source temperature consensus`), temps);
+    card.append(heading, element('p', 'day-summary', `Forecast: ${description} · ${day.consensus.sourceCount}-source temperature consensus`), temps);
     const metrics = element('div', 'day-metrics');
     metrics.append(metric('High spread', temperature(day.consensus.highSpread)), metric('Low spread', temperature(day.consensus.lowSpread)),
       metric('Vs history high', signedTemperature(day.consensus.highAnomaly)), metric('Vs history low', signedTemperature(day.consensus.lowAnomaly)),
@@ -278,10 +332,13 @@ function renderDays(days) {
 
 function render(data, stale = false) {
   const merged = mergeForecast(data.gfs, data.ecmwf, data.nws, data.climatology);
-  renderAlerts(data.alerts || []); renderCurrent(merged.current, data.fetchedAt, Math.max(...merged.days.map(day => day.sources.length))); renderAnalytics(merged.days); renderDays(merged.days);
+  const current = data.currentObservation || merged.current;
+  renderAlerts(data.alerts || []); renderCurrent(current, data.fetchedAt, Math.max(...merged.days.map(day => day.sources.length)), Boolean(data.currentObservation)); renderAnalytics(merged.days); renderDays(merged.days);
   document.getElementById('forecast-content').hidden = false;
   const notes = []; if (stale) notes.push('Live refresh failed; showing recently cached guidance.');
-  if (data.nwsError) notes.push(`NWS unavailable: ${data.nwsError}.`); if (data.errors?.length) notes.push(`Partial data: ${data.errors.join(' ')}`);
+  if (data.nwsError) notes.push(`NWS forecast unavailable: ${data.nwsError}.`);
+  if (data.observationError) notes.push(`NWS current observation unavailable: ${data.observationError}; showing the GFS/RRFS estimate.`);
+  if (data.errors?.length) notes.push(`Partial data: ${data.errors.join(' ')}`);
   const status = document.getElementById('forecast-status'); status.textContent = notes.join(' '); status.classList.toggle('error', Boolean(notes.length));
 }
 

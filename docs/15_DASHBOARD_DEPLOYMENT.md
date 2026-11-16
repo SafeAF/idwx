@@ -8,7 +8,8 @@ this checkout and from an installed Python wheel. No frontend build step,
 third-party scripts, or external fonts are required. The live weather module
 fetches only `api.weather.gov` and `api.open-meteo.com` from the browser.
 
-The homepage shows current GFS/RRFS conditions, active NWS alerts, and a
+The homepage shows the latest NWS KTWF airport observation (with GFS/RRFS as a
+stale/unavailable fallback), active NWS alerts, and a
 14-day outlook for Twin Falls. It compares three distinct forecast systems:
 NWS point guidance, NOAA GFS/RRFS, and ECMWF IFS. The latter two are delivered
 through model-specific Open-Meteo requests and continue through day 14; NWS
