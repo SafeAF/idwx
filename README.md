@@ -163,6 +163,9 @@ scripts, fonts, or frontend build tools are required in production.
 
 See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) and
 [deployment and verification instructions](docs/15_DASHBOARD_DEPLOYMENT.md).
+The proposed [web data explorer and analytics plan](docs/22_DATA_EXPLORER_PLAN.md)
+describes interactive temperature and frost history, year comparisons, filtered
+downloads, and later growing-season analytics within the static architecture.
 The Nginx configuration is in `deploy/nginx.conf` and allowlists those two API
 origins in `connect-src`. Research-forecast validation remains separate.
 
