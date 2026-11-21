@@ -262,9 +262,6 @@ Artifacts are `.tmp/verified-site`, `.tmp/delivery/idwx-demo-site.zip`, and
 for preview/testing. Real deployment must use audited data and omit both
 `--demo` and `--allow-demo`.
 
-`.github/workflows/verify.yml` configures the same checks on Windows and
-Linux, with the optional Nginx smoke checks on Linux. It verifies and uploads
-both the real Twin Falls deployment ZIP and the synthetic demo ZIP, plus the
-wheel. Action revisions, pnpm and dependencies are pinned.
-The workflow is configured but has not been run remotely in this session.
+Verification is run locally using the commands and scripts above. This
+repository does not use GitHub Actions.
 See `21_DELIVERY_STATUS.md` for the launch checklist and current blockers.
