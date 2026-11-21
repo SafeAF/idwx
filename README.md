@@ -165,7 +165,9 @@ See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) and
 [deployment and verification instructions](docs/15_DASHBOARD_DEPLOYMENT.md).
 The [historical data explorer](docs/23_DATA_EXPLORER_VERIFICATION.md) is available
 at `explore.html` in each new export. It provides temperature timelines,
-comparisons of up to three years, freeze-date distributions and verified
+comparisons of up to three years with year selectors, same-month comparisons
+across years, monthly profiles, yearly mean/min/max statistics, selectable
+line/scatter/bar/area graphs, freeze-date distributions and verified
 frost-free intervals, monthly anomaly heatmaps, coverage-aware GDD/winter
 metrics, accessible tables, shareable filters, and matching CSV downloads.
 See the [implementation plan](docs/22_DATA_EXPLORER_PLAN.md) for scope and the

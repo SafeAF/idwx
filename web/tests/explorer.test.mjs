@@ -175,3 +175,60 @@ test('late data cannot overwrite a newer selection and incomplete long periods s
   const june2021 = [...$('ex-table-body').children].find(tr => tr.firstChild.textContent === '2021-06');
   assert.equal(june2021.children[1].textContent, '—');
 });
+
+test('year selectors build a comparison without typing and preserve shareable years', async t => {
+  const { $, apply, window } = await explorer(t);
+  await apply({ view: 'compare' });
+  $('ex-year-1').value = '2019'; $('ex-year-1').dispatchEvent(new window.Event('change'));
+  $('ex-year-2').value = '2020'; $('ex-year-2').dispatchEvent(new window.Event('change'));
+  $('ex-year-3').value = ''; $('ex-year-3').dispatchEvent(new window.Event('change'));
+  await apply({ mark: 'scatter' });
+  assert.equal($('ex-compare').value, '2019,2020');
+  assert.equal($('ex-year-3').value, ''); assert.match($('ex-legend').textContent, /2019 \(circles\).*2020 \(squares\)/);
+  assert.ok($('ex-chart').querySelectorAll('[data-mark="scatter"]').length > 700);
+  assert.equal(new URL(window.location.href).searchParams.get('compare'), '2019,2020');
+});
+
+test('same-month comparisons show one statistic per year with coverage and matching CSV metadata', async t => {
+  const { $, apply, blobs, window } = await explorer(t);
+  await apply({ view: 'month-compare', start: '2019-05-10', end: '2021-08-09', month: '6', metric: 'tmin_c', statistic: 'max', mark: 'bar' });
+  assert.match($('ex-title').textContent, /June across the years/);
+  assert.equal($('ex-start').value, '2019-01-01'); assert.equal($('ex-end').value, '2021-12-31');
+  const rows = [...$('ex-table-body').children]; assert.equal(rows.length, 3);
+  assert.equal(rows[0].children[1].textContent, '8');
+  assert.equal(rows[2].children[1].textContent, '—');
+  assert.equal(rows[2].children[2].textContent, '29'); assert.equal(rows[2].children[3].textContent, '30');
+  assert.equal($('ex-chart').querySelectorAll('[data-mark="bar"]').length, 2);
+  $('ex-download').click(); const exported = await [...blobs.values()][0].text();
+  assert.match(exported, /selected_month/); assert.match(exported, /"max","6","bar"/);
+  assert.match(exported, /selected_month_across_years/);
+  $('ex-chart').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  assert.match($('ex-inspection').textContent, /2021.*unavailable/);
+});
+
+test('monthly profile loads one selected year and every chart style keeps the same table values', async t => {
+  const { $, apply, requests, window } = await explorer(t, { query: '?view=monthly&profile_year=2020&statistic=min&mark=bar' });
+  assert.equal($('profile-year-control').hidden, false);
+  assert.equal($('ex-profile_year').value, '2020'); assert.equal($('ex-start').disabled, true);
+  assert.equal($('ex-table-body').children.length, 12);
+  assert.deepEqual(requests.filter(r => r.includes('/daily/')).map(r => r.split('/').at(-1)), ['2020.json']);
+  const table = $('ex-table-body').textContent;
+  for (const mark of ['line', 'scatter', 'area', 'bar']) {
+    await apply({ mark });
+    assert.ok($('ex-chart').querySelectorAll(`[data-mark="${mark}"]`).length > 0);
+    assert.equal($('ex-table-body').textContent, table);
+    assert.equal(new URL(window.location.href).searchParams.get('mark'), mark);
+  }
+});
+
+test('homepage offers prominent working links for each visualization family', () => {
+  const home = new JSDOM(files.get('/almanac/index.html'), { url: 'https://idwx.test/almanac/' });
+  try {
+    assert.match(home.window.document.querySelector('#visualizations-title').textContent, /Graphs & year comparisons/);
+    const links = [...home.window.document.querySelectorAll('.visualization-hub a')];
+    for (const view of ['compare', 'month-compare', 'monthly', 'annual', 'heatmap', 'frost']) {
+      const link = links.find(a => new URL(a.href).searchParams.get('view') === view);
+      assert.ok(link, view); assert.equal(new URL(link.href).pathname, '/almanac/explore.html');
+    }
+  } finally { home.window.close(); }
+});

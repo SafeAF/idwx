@@ -24,13 +24,21 @@ export function normalizeSelection(params, years, thresholds, sourceLastDate = n
   const first = `${years[0]}-01-01`, last = `${years.at(-1)}-12-31`;
   const defaultYear = sourceLastDate?.endsWith('-12-31') ? years.at(-1) : years.length > 1 ? years.at(-2) : years[0];
   const clamp = (value, fallback) => dateParts(value) ? (value < first ? first : value > last ? last : value) : fallback;
-  const start = clamp(params.get('start'), `${defaultYear}-01-01`);
+  let start = clamp(params.get('start'), `${defaultYear}-01-01`);
   let end = clamp(params.get('end'), `${defaultYear}-12-31`);
   if (end < start) end = start;
-  const compare = [...new Set((params.get('compare') || String(defaultYear)).split(',').map(Number).filter(y => years.includes(y)))].slice(0, 3);
-  const views = ['temperature', 'compare', 'frost', 'heatmap', 'seasonal', 'table'];
+  const compare = [...new Set((params.get('compare') || years.filter(y => y <= defaultYear).slice(-3).join(',')).split(',').map(Number).filter(y => years.includes(y)))].slice(0, 3);
+  const views = ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'frost', 'heatmap', 'seasonal', 'table'];
+  const view = views.includes(params.get('view')) ? params.get('view') : 'temperature';
+  if (['annual', 'month-compare'].includes(view) && !params.has('start')) start = first;
+  const profileYear = years.includes(Number(params.get('profile_year'))) ? Number(params.get('profile_year')) : Number(start.slice(0, 4));
+  if (view === 'monthly') { start = `${profileYear}-01-01`; end = `${profileYear}-12-31`; }
+  if (['annual', 'month-compare', 'frost'].includes(view)) { start = start.slice(0, 4) + '-01-01'; end = end.slice(0, 4) + '-12-31'; }
   return {
-    view: views.includes(params.get('view')) ? params.get('view') : 'temperature', start, end,
+    view, start, end, profile_year: profileYear,
+    month: Number.isInteger(Number(params.get('month'))) && Number(params.get('month')) >= 1 && Number(params.get('month')) <= 12 ? Number(params.get('month')) : 1,
+    statistic: ['mean', 'min', 'max'].includes(params.get('statistic')) ? params.get('statistic') : 'mean',
+    mark: ['line', 'scatter', 'bar', 'area'].includes(params.get('mark')) ? params.get('mark') : ['annual', 'month-compare', 'monthly'].includes(view) ? 'bar' : 'line',
     compare: compare.length ? compare : [defaultYear], unit: params.get('unit') === 'f' ? 'f' : 'c',
     threshold: params.has('threshold') && thresholds.includes(Number(params.get('threshold'))) ? Number(params.get('threshold')) : thresholds[0],
     metric: Object.hasOwn(METRICS, params.get('metric')) ? params.get('metric') : 'tmean_c',
@@ -43,7 +51,7 @@ export function selectionYears(selection, available) {
 }
 
 export function selectedRows(chunks, selection) {
-  return chunks.flatMap(chunk => chunk.days).filter(row => selection.view === 'compare' || row.date >= selection.start && row.date <= selection.end).sort((a, b) => a.date.localeCompare(b.date));
+  return chunks.flatMap(chunk => chunk.days).filter(row => (selection.view === 'compare' || row.date >= selection.start && row.date <= selection.end) && (selection.view !== 'month-compare' || Number(row.date.slice(5, 7)) === selection.month)).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function statistics(rows) {
@@ -67,6 +75,16 @@ export function aggregate(rows, key, frequency = 'month') {
     const expected = frequency === 'year' ? (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000 : new Date(Date.UTC(year, month, 0)).getUTCDate();
     const values = days.map(d => d[key]).filter(finite);
     return { period, value: values.length === expected ? mean(values) : null, valid: values.length, expected };
+  });
+}
+
+export function periodStatistics(rows, key, frequency, statistic, month = null) {
+  const periods = aggregate(rows, key, frequency);
+  return periods.map(period => {
+    const values = rows.filter(row => row.date.startsWith(period.period)).map(row => row[key]).filter(finite);
+    const expected = month === null ? period.expected : new Date(Date.UTC(Number(period.period), month, 0)).getUTCDate();
+    const complete = values.length === expected;
+    return { period: period.period, value: !complete ? null : statistic === 'min' ? Math.min(...values) : statistic === 'max' ? Math.max(...values) : mean(values), valid: values.length, expected, status: complete ? 'complete' : 'incomplete' };
   });
 }
 

@@ -50,3 +50,21 @@ print(json.dumps({'daily':daily,'policy':policy,'expected':seasonal_summary(dail
     assert.throws(() => validateChunk({ station_id: 'x', year: 2024, days: data.daily['2024'].slice(1) }, 'x', 2024), /archive/);
   } finally { rmSync(scratch, { recursive: true }); }
 });
+
+test('graph-builder period statistics compute known means/extremes and reject incomplete leap months', async () => {
+  const { periodStatistics, selectedRows } = await import('../js/analytics.js');
+  const january = Array.from({ length: 31 }, (_, i) => row(`2023-01-${String(i + 1).padStart(2, '0')}`, i));
+  for (const [statistic, expected] of [['mean', 15], ['min', 0], ['max', 30]]) {
+    assert.equal(periodStatistics(january, 'tmean_c', 'month', statistic)[0].value, expected);
+  }
+  const february = Array.from({ length: 28 }, (_, i) => row(`2024-02-${String(i + 1).padStart(2, '0')}`, 5));
+  const missingLeapDay = periodStatistics(february, 'tmean_c', 'year', 'mean', 2)[0];
+  assert.equal(missingLeapDay.expected, 29); assert.equal(missingLeapDay.valid, 28); assert.equal(missingLeapDay.value, null);
+  const selection = normalizeSelection(new URLSearchParams('view=month-compare&month=2&start=2023-04-01&end=2024-06-01&statistic=max&mark=scatter'), [2023, 2024], [0]);
+  assert.equal(selection.start, '2023-01-01'); assert.equal(selection.end, '2024-12-31');
+  assert.equal(selection.mark, 'scatter'); assert.equal(selection.statistic, 'max');
+  assert.equal(selectedRows([{ days: [...january, ...february] }], selection).length, 28);
+  const profile = normalizeSelection(new URLSearchParams('view=monthly&profile_year=2024&month=99&mark=pie&statistic=unknown'), [2023, 2024], [0]);
+  assert.equal(profile.start, '2024-01-01'); assert.equal(profile.end, '2024-12-31');
+  assert.equal(profile.month, 1); assert.equal(profile.mark, 'bar'); assert.equal(profile.statistic, 'mean');
+});

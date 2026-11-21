@@ -10,17 +10,22 @@
   <a class="skip-link" href="#explorer">Skip to the explorer</a>
   <header class="site-header wrap"><a class="brand" href="./">IDWX <span class="brand-divider">/</span> Twin Falls Weather</a><a href="./#historical" class="header-link">Weather & frost almanac</a></header>
   <main id="explorer" class="wrap" tabindex="-1">
-    <section class="explorer-intro"><p class="eyebrow">The historical record</p><h1>Explore the seasons.</h1><p>Follow daily temperatures, compare years, and investigate freeze dates. Every view includes its coverage and the values behind it.</p></section>
+    <section class="explorer-intro"><p class="eyebrow">The historical record</p><h1>Explore the seasons.</h1><p>Follow daily temperatures, compare years, and investigate freeze dates. Every view includes its coverage and the values behind it.</p>
+      <nav class="explorer-shortcuts" aria-label="Visualization shortcuts"><a href="?view=compare">Compare years</a><a href="?view=annual">Yearly statistics</a><a href="?view=month-compare">A month across years</a><a href="?view=monthly">Monthly profile</a><a href="?view=heatmap">Anomaly heatmap</a><a href="?view=frost">Freeze dates</a></nav></section>
     <div id="explorer-status" class="status" role="status" aria-live="polite">Loading the archive…</div>
     <button id="explorer-retry" class="button" hidden>Retry this selection</button>
     <p id="explorer-notice" class="notice" hidden></p>
     <form id="explorer-filters" class="explorer-filters panel" aria-label="Explore the archive">
       <label>Station<select id="ex-station" disabled></select></label>
-      <label>View<select id="ex-view"><option value="temperature">Temperature timeline</option><option value="compare">Compare years</option><option value="frost">Frost history</option><option value="heatmap">Monthly anomalies</option><option value="seasonal">Growing season & winter</option><option value="table">Daily data table</option></select></label>
+      <label>View<select id="ex-view"><option value="temperature">Temperature timeline</option><option value="compare">Compare years (daily overlay)</option><option value="annual">Yearly statistics</option><option value="month-compare">Same month across years</option><option value="monthly">Monthly profile of one year</option><option value="frost">Frost history</option><option value="heatmap">Monthly anomalies</option><option value="seasonal">Growing season & winter</option><option value="table">Daily data table</option></select></label>
       <label>From local date<input id="ex-start" type="date" required></label><label>Through local date<input id="ex-end" type="date" required></label>
       <label>Temperature series<select id="ex-metric"><option value="tmean_c">Daily mean</option><option value="tmin_c">Daily minimum</option><option value="tmax_c">Daily maximum</option></select></label>
       <label>Display units<select id="ex-unit"><option value="c">Celsius</option><option value="f">Fahrenheit</option></select></label>
-      <label id="compare-control" hidden>Compare up to three years<input id="ex-compare" placeholder="2023,2024,2025" aria-describedby="compare-help"><span id="compare-help" class="small muted">Comma-separated years; compares full calendars.</span></label>
+      <fieldset id="compare-control" class="comparison-years" hidden><legend>Compare up to three years</legend><div class="comparison-year-selectors"><label>First year<select id="ex-year-1"></select></label><label>Second year<select id="ex-year-2"></select></label><label>Third year<select id="ex-year-3"></select></label></div><input id="ex-compare" type="hidden"><p class="small muted">Full calendar years overlaid on the same month/day axis.</p></fieldset>
+      <label id="profile-year-control" hidden>Profile year<select id="ex-profile_year"></select></label>
+      <label id="month-control" hidden>Month to compare<select id="ex-month"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></label>
+      <label id="statistic-control" hidden>Statistic<select id="ex-statistic"><option value="mean">Arithmetic mean</option><option value="min">Minimum</option><option value="max">Maximum</option></select></label>
+      <label id="mark-control">Chart style<select id="ex-mark"><option value="line">Line</option><option value="scatter">Scatter</option><option value="bar">Bar</option><option value="area">Area</option></select></label>
       <label id="threshold-control" hidden>Freeze threshold<select id="ex-threshold"></select></label>
       <label class="check-label"><input id="ex-baseline" type="checkbox" checked> Show historical P10–P90 and median</label>
       <div class="explorer-actions"><button class="button" type="submit">Apply filters</button><button class="button" type="button" id="ex-reset">Reset</button></div>

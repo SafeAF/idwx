@@ -310,3 +310,14 @@ coverage/candidate fields. Long-range temperature downloads match their
 monthly/yearly table; the daily table view exports individual dates. Comparison
 mode uses full selected calendar years. Frost mode uses full seasonal windows
 for the inclusive selected years. Other views use inclusive local dates.
+
+
+The graph builder adds browser-only yearly statistics, same-month comparisons
+across years, and monthly profiles. These reuse the existing daily chunks;
+they add no release files or schema fields. Statistics select arithmetic mean,
+minimum, or maximum of the chosen daily temperature field and require all
+expected calendar days. Same-month comparisons use each year's actual month
+length; missing leap days invalidate February instead of being imputed.
+CSV metadata includes `statistic`, `selected_month`, `chart_style`, and an
+explicit `selection_scope` (`full_calendar_years`,
+`selected_month_across_years`, or `full_profile_year` for these views).

@@ -9,14 +9,14 @@ const make = (tag, attrs = {}, text) => {
   return el;
 };
 
-export function lineChart(container, series, { title, unit = '', inspect }) {
+export function lineChart(container, series, { title, unit = '', inspect, mark = 'line' }) {
   container.replaceChildren();
   const points = series.flatMap(s => s.points), valid = points.filter(p => finite(p.y));
   if (!valid.length) { container.textContent = 'No complete values to plot in this selection. See the table and coverage.'; return; }
   const width = 1000, height = 360, left = 65, right = 28, top = 25, bottom = 48;
   const xs = points.map(p => p.x), ys = valid.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys), padding = Math.max(1, (maxY - minY) * .12);
+  const minY = Math.min(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), maxY = Math.max(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), padding = Math.max(1, (maxY - minY) * .12);
   const x = value => left + (value - minX) / (maxX - minX || 1) * (width - left - right);
   const y = value => top + (maxY + padding - value) / (maxY - minY + 2 * padding) * (height - top - bottom);
   const svg = make('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': title });
@@ -26,16 +26,45 @@ export function lineChart(container, series, { title, unit = '', inspect }) {
     svg.append(make('line', { x1: left, x2: width - right, y1: y(value), y2: y(value), class: 'grid' }), make('text', { x: left - 10, y: y(value) + 4, 'text-anchor': 'end' }, shown(value)));
   }
   svg.append(make('text', { x: left, y: 15 }, unit));
+  const plotted = series.filter(s => !s.reference);
+  const uniqueX = [...new Set(points.map(p => p.x))].sort((a, b) => a - b);
+  const spacing = uniqueX.length > 1 ? Math.min(...uniqueX.slice(1).map((value, i) => x(value) - x(uniqueX[i]))) : 40;
+  const barWidth = Math.max(1, Math.min(35, spacing * .75 / Math.max(1, plotted.length)));
+  if (['bar', 'area'].includes(mark)) svg.append(make('line', { x1: left, x2: width - right, y1: y(0), y2: y(0), stroke: '#65716a', 'stroke-width': 1 }));
   series.forEach((s, index) => {
-    let path = '', open = false;
+    const style = s.reference ? 'line' : mark, color = s.color || colors[index % colors.length];
+    let path = '', open = false, segment = [];
+    const area = () => {
+      if (segment.length) {
+        const d = `M${x(segment[0].x)},${y(0)} ` + segment.map(p => `L${x(p.x)},${y(p.y)}`).join(' ') + ` L${x(segment.at(-1).x)},${y(0)} Z`;
+        svg.append(make('path', { d, fill: color, opacity: .16, 'data-mark': 'area' }));
+      }
+      segment = [];
+    };
     for (const point of s.points) {
-      if (!finite(point.y)) { open = false; continue; }
-      path += `${open ? 'L' : 'M'}${x(point.x).toFixed(2)},${y(point.y).toFixed(2)} `;
-      open = true;
+      if (!finite(point.y)) { open = false; if (style === 'area') area(); continue; }
+      const detail = `${s.name} · ${point.label}: ${point.detail || shown(point.y) + ' ' + unit}`;
+      if (style === 'scatter' || style === 'bar') {
+        const shape = plotted.indexOf(s) % 3;
+        const scatter = shape === 0 ? make('circle', { cx: x(point.x), cy: y(point.y), r: 3.5, fill: color })
+          : shape === 1 ? make('rect', { x: x(point.x) - 3, y: y(point.y) - 3, width: 6, height: 6, fill: color })
+          : make('path', { d: `M${x(point.x)},${y(point.y) - 4} l4,4 l-4,4 l-4,-4 Z`, fill: color });
+        const glyph = style === 'scatter'
+          ? scatter
+          : make('rect', { x: x(point.x) + (plotted.indexOf(s) - (plotted.length - 1) / 2) * barWidth - barWidth / 2, y: Math.min(y(0), y(point.y)), width: barWidth, height: Math.max(.7, Math.abs(y(point.y) - y(0))), fill: color, opacity: .85, 'data-mark': 'bar' });
+        glyph.setAttribute('data-mark', style);
+        glyph.setAttribute('opacity', s.light ? .45 : .9);
+        glyph.append(make('title', {}, detail));
+        svg.append(glyph);
+      } else {
+        path += `${open ? 'L' : 'M'}${x(point.x).toFixed(2)},${y(point.y).toFixed(2)} `;
+        open = true; segment.push(point);
+      }
     }
-    svg.append(make('path', { d: path, fill: 'none', stroke: s.color || colors[index % colors.length], 'stroke-width': s.light ? 1.3 : 2.5, 'stroke-dasharray': s.dash || '', opacity: s.light ? .55 : 1 }));
-    if (s.points.filter(p => finite(p.y)).length === 1) {
-      const p = s.points.find(p => finite(p.y)); svg.append(make('circle', { cx: x(p.x), cy: y(p.y), r: 4, fill: colors[index % colors.length] }));
+    if (style === 'area') area();
+    if (style === 'line' || style === 'area') svg.append(make('path', { d: path, fill: 'none', stroke: color, 'stroke-width': s.light ? 1.3 : 2.5, 'stroke-dasharray': s.dash || '', opacity: s.light ? .55 : 1, 'data-mark': 'line' }));
+    if ((style === 'line' || style === 'area') && s.points.filter(p => finite(p.y)).length === 1) {
+      const p = s.points.find(p => finite(p.y)); svg.append(make('circle', { cx: x(p.x), cy: y(p.y), r: 4, fill: color }));
     }
   });
   const positions = [...new Map(points.map(p => [p.x, p.label])).entries()].sort(([a], [b]) => a - b);
@@ -84,7 +113,7 @@ export function temperatureSeries(rows, selection, climatology) {
     const field = { tmin_c: 'low_c', tmean_c: 'mean_c', tmax_c: 'high_c' }[key];
     const days = new Map(climatology.days.map(d => [d.month_day, d]));
     const referenceRows = compare ? Array.from({ length: 366 }, (_, i) => ({ date: new Date(Date.UTC(2000, 0, i + 1)).toISOString().slice(0, 10) })) : rows;
-    for (const q of ['p10', 'p50', 'p90']) series.push({ name: `History ${q.toUpperCase()}`, color: '#56645d', dash: q === 'p50' ? '6 4' : '2 4', light: true,
+    for (const q of ['p10', 'p50', 'p90']) series.push({ name: `History ${q.toUpperCase()}`, reference: true, color: '#56645d', dash: q === 'p50' ? '6 4' : '2 4', light: true,
       points: referenceRows.map((r, i) => ({ x: compare ? calendarDay(r.date) : i, label: compare ? r.date.slice(5) : r.date, y: toUnit(days.get(r.date.slice(5))?.[field]?.[q], selection.unit) })) });
   }
   return { series, long, frequency };

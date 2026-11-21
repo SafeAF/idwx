@@ -1,7 +1,7 @@
 # Historical explorer: implementation and verification
 
 Implemented locally November 21, 2026, on `main`, based on
-`4024f08258631aff742d85b45431efc85ff1f273` plus the current uncommitted changes.
+`936c7b7` plus the current uncommitted graph-builder enhancements.
 This is implementation and local verification evidence, not production
 activation or visual browser acceptance.
 
@@ -22,8 +22,16 @@ The directory already contains the locally generated real-data export.
 - **Temperature timeline:** inspect daily minimum, mean, and maximum with a
   fixed historical reference. Choose a shorter period for daily detail;
   longer periods use complete monthly/yearly means with matching tables.
-- **Compare years:** enter up to three comma-separated years and apply the
+- **Compare years:** choose up to three years from the dropdowns and apply the
   filters. This mode compares full calendars and disables date-range controls.
+- **Yearly statistics:** compare complete calendar years with arithmetic mean,
+  minimum, or maximum of the chosen daily temperature field.
+- **Same month across years:** select a month and a year range, then graph
+  its temperature statistics. A leap February requires 29 valid days.
+- **Monthly profile of one year:** choose one year and compare its 12 monthly
+  statistics. Missing months remain unavailable.
+- **Chart styles:** choose line, scatter, bar, or area for temperature graphs.
+  Styling changes preserve the underlying table and CSV values.
 - **Frost history:** inspect full seasonal windows in the inclusive selected
   years, status counts, verified frost-free intervals, and spring/fall
   event-date distributions. Missing/no-event seasons never become date zero.
@@ -38,7 +46,8 @@ The directory already contains the locally generated real-data export.
   full selected rows, including missing values and canonical Celsius values.
 
 Apply filters to update the view and URL. Back/forward restores selections.
-Keyboard arrows inspect timeline values. Downloads retain release identity,
+The homepage includes a prominent **Graphs & year comparisons** section with
+direct links, plus navigation in the header. Keyboard arrows inspect chart values. Downloads retain release identity,
 coverage, baseline, effective selection scope, and metric units/policy.
 The historical explorer makes no live weather-provider requests.
 
@@ -66,15 +75,15 @@ new daily chunks. New assets are included in both checkout and wheel exports.
 | Check | Result |
 | --- | --- |
 | Full Python suite | 238 passed; 2 optional Nginx tests skipped because Nginx is unavailable |
-| Full frontend suite | 47 passed with Node 24.22.1 and the existing jsdom dependency |
+| Full frontend suite | 52 passed with Node 24.22.1 and the existing jsdom dependency |
 | Focused analytics/explorer checks after final adjustments | 5 Python and 13 frontend checks passed |
 | Ruff on modified Python files and whitespace checks | Passed |
 | Real Twin Falls export, verification, ZIP extraction/reverification | Passed; `historical_reanalysis`, 1 station, 94 annual threshold records |
 | Wheel export from extracted package | Passed |
 | Wheel installed in a fresh isolated environment with locked dependencies | Export, verification, and packaging passed |
 | Loopback static HTTP | Explorer HTML, JS, CSS, daily JSON, and frost CSV returned 200 with expected MIME types; missing/source/database paths returned 404 |
-| Default shell plus selected data payload | Approximately 59 KB gzip (sum of individually compressed files), below the proposed 1 MB budget |
-| Full archive cached filter calculation and DOM rendering | 67.9 ms on Node/jsdom, AMD Ryzen 7 5700G, with zero additional data requests; not a browser layout benchmark |
+| Default shell plus selected data payload | Approximately 62 KB gzip (sum of individually compressed files), below the proposed 1 MB budget |
+| Full archive cached filter calculation and DOM rendering | 97.9 ms on Node/jsdom, AMD Ryzen 7 5700G, with zero additional data requests; not a browser layout benchmark |
 
 The real export uses the existing committed database, unchanged at SHA-256
 `cb7f325643d26648aac229ff6d01077c3eee7246675b34a2b328df135a9e40ce`.
@@ -99,3 +108,18 @@ and precipitation-specific coverage pass the review specified in
 release-pinned sharing, and research-model comparisons remain later work.
 No database refresh, new data collection, production deployment, or host/vhost
 changes were performed.
+
+## IdaWeather graph-builder follow-up
+
+The local reference at `~/source/IdaWeather/` was inspected read-only. Its
+`graphs/_form.html.erb` and study graph rendering informed the yearly,
+same-month-across-years, monthly-profile, mean/min/max, and chart-style
+controls. IDWX retains its static publication and validated daily temperature
+inputs. No legacy API calls, fallback example coordinates, hourly data,
+additional variables, accounts, or study database were introduced.
+
+The additional graph-builder tests independently check known arithmetic
+means/extremes, leap-month completeness, year dropdowns, CSV scope, identical
+tables across chart styles, and homepage links. The full frontend suite now
+passes 52 checks. Browser access remains unavailable; the live local preview
+is refreshed for owner review.

@@ -1,5 +1,5 @@
 import { EVENT_NAMES, calendarDay, releaseURL, statusLabel, temperature, validateRelease, validateStationDocument } from './format.js';
-import { METRICS, aggregate, csv, finite, frostDistribution, monthlyAnomalies, normalizeSelection, seasonalMetrics, selectedRows, selectionYears, shown, statistics, toUnit, validateChunk } from './analytics.js';
+import { METRICS, aggregate, csv, finite, frostDistribution, monthlyAnomalies, normalizeSelection, periodStatistics, seasonalMetrics, selectedRows, selectionYears, shown, statistics, toUnit, validateChunk } from './analytics.js';
 import { renderHistory } from './charts.js';
 import { lineChart, temperatureSeries } from './explorer-charts.js';
 
@@ -25,25 +25,35 @@ async function fetchJSON(url, signal, cache = true) {
 }
 const releaseDocument = async (path, signal) => validateRelease(await fetchJSON(releaseURL(path, base, state.manifest.release_id), signal), state.manifest);
 
+function visibility() {
+  const view = $('ex-view').value;
+  const custom = ['annual', 'month-compare', 'monthly'].includes(view);
+  $('compare-control').hidden = view !== 'compare'; $('threshold-control').hidden = view !== 'frost';
+  $('profile-year-control').hidden = view !== 'monthly'; $('month-control').hidden = view !== 'month-compare';
+  $('statistic-control').hidden = !custom;
+  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly'].includes(view);
+  $('ex-start').disabled = $('ex-end').disabled = ['compare', 'monthly'].includes(view);
+  $('ex-metric').disabled = view === 'frost' || view === 'seasonal';
+  $('ex-baseline').disabled = !['temperature', 'compare'].includes(view);
+}
 function syncControls() {
   const s = state.selection;
-  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold']) $('ex-' + key).value = s[key];
+  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year']) $('ex-' + key).value = s[key];
   $('ex-compare').value = s.compare.join(','); $('ex-baseline').checked = s.baseline;
-  $('compare-control').hidden = s.view !== 'compare'; $('threshold-control').hidden = s.view !== 'frost';
-  $('ex-start').disabled = $('ex-end').disabled = s.view === 'compare';
-  $('ex-metric').disabled = s.view === 'frost' || s.view === 'seasonal';
-  $('ex-baseline').disabled = !['temperature', 'compare'].includes(s.view);
+  for (let i = 1; i <= 3; i++) $('ex-year-' + i).value = s.compare[i - 1] ?? '';
+  document.querySelectorAll('.explorer-shortcuts a').forEach(a => { if (new URL(a.href).searchParams.get('view') === s.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  visibility();
 }
 function writeURL() {
   const url = new URL(location.href), s = state.selection;
   url.searchParams.set('station', state.doc.station.station_id);
-  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold']) url.searchParams.set(key, s[key]);
+  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year']) url.searchParams.set(key, s[key]);
   url.searchParams.set('compare', s.compare.join(',')); url.searchParams.set('baseline', s.baseline ? 'on' : 'off');
   if (url.href !== location.href) history.pushState(null, '', url);
 }
 function paramsFromForm() {
   const params = new URLSearchParams();
-  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'compare']) params.set(key, $('ex-' + key).value);
+  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'compare', 'month', 'statistic', 'mark', 'profile_year']) params.set(key, $('ex-' + key).value);
   params.set('baseline', $('ex-baseline').checked ? 'on' : 'off');
   return params;
 }
@@ -74,6 +84,9 @@ async function openSelection(stationID, params, push = true) {
     if (request !== state.request || signal.aborted) return;
     Object.assign(state, { doc, index, selection, summary, rows: selectedRows(chunks, selection), page: 0 });
     $('ex-station').value = entry.station.station_id;
+    for (let i = 1; i <= 3; i++) $('ex-year-' + i).replaceChildren(...(i > 1 ? [option('', 'None')] : []), ...[...years()].reverse().map(y => option(y, y)));
+    $('ex-profile_year').replaceChildren(...[...years()].reverse().map(y => option(y, y)));
+
     $('ex-threshold').replaceChildren(...doc.thresholds_c.map(t => option(t, temperature(t, selection.unit) + ' or colder')));
     for (const id of ['ex-start', 'ex-end']) { $(id).min = `${years()[0]}-01-01`; $(id).max = `${years().at(-1)}-12-31`; }
     syncControls(); if (push) writeURL();
@@ -128,9 +141,9 @@ function renderTemperature() {
   const s = state.selection;
   $('ex-title').textContent = s.view === 'compare' ? 'Years, side by side' : s.view === 'table' ? 'The daily record' : 'Temperature through time';
   const { series, long, frequency } = temperatureSeries(state.rows, s, state.doc.temperature_climatology);
-  $('ex-description').textContent = s.view === 'compare' ? 'Full calendar years aligned by month/day. February 29 remains distinct. Partial years retain their gaps.' : long ? `Long selections show ${frequency} means only for complete periods. Select a shorter date range for daily detail. Historical overlays are available in daily views.` : 'Daily minimum, mean, and maximum; gaps remain open. The emphasized line is the selected temperature series. Historical reference lines describe the fixed baseline.';
-  $('ex-legend').textContent = s.view === 'compare' ? s.compare.map((y, i) => `${y} (${['solid', 'dashed', 'dotted'][i]})`).join(' · ') : 'Minimum: solid green · Mean: dashed rust · Maximum: dotted blue · Reference quantiles: gray';
-  if (s.view !== 'table') lineChart($('ex-chart'), series, { title: $('ex-title').textContent, unit: `°${s.unit.toUpperCase()}`, inspect });
+  $('ex-description').textContent = s.view === 'compare' ? 'Full calendar years aligned by month/day. February 29 remains distinct. Partial years retain their gaps.' : long ? `Long selections show ${frequency} means only for complete periods. Select a shorter date range for daily detail. Historical overlays are available in daily views.` : 'Daily minimum, mean, and maximum; gaps remain open. The selected temperature series is emphasized. Historical reference lines describe the fixed baseline.';
+  $('ex-legend').textContent = s.view === 'compare' ? s.compare.map((y, i) => `${y} (${(s.mark === 'scatter' ? ['circles', 'squares', 'diamonds'] : s.mark === 'bar' ? s.compare.length === 2 ? ['left bar', 'right bar'] : ['left bar', 'middle bar', 'right bar'] : ['solid', 'dashed', 'dotted'])[i]})`).join(' · ') : s.mark === 'scatter' ? 'Minimum: green circles · Mean: rust squares · Maximum: blue diamonds · Reference quantiles: gray' : s.mark === 'bar' ? 'Minimum: left green bars · Mean: middle rust bars · Maximum: right blue bars · Reference quantiles: gray' : 'Minimum: solid green · Mean: dashed rust · Maximum: dotted blue · Reference quantiles: gray';
+  if (s.view !== 'table') lineChart($('ex-chart'), series, { title: $('ex-title').textContent, unit: `°${s.unit.toUpperCase()}`, inspect, mark: s.mark });
   else $('ex-chart').textContent = 'The selected daily record is available in the table below.';
   if (long && s.view !== 'table') {
     const grouped = Object.fromEntries(Object.keys(METRICS).map(key => [key, aggregate(state.rows, key, frequency)]));
@@ -140,6 +153,18 @@ function renderTemperature() {
       'Chart and table show complete-period means; partial periods remain unavailable. CSV uses canonical Celsius. Choose Daily data table for individual dates.');
   } else renderDaily();
 }
+function renderPeriodStatistics() {
+  const s = state.selection, monthly = s.view === 'monthly', sameMonth = s.view === 'month-compare';
+  const monthName = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, s.month - 1, 1)));
+  const statisticLabel = { mean: 'Arithmetic mean', min: 'Minimum', max: 'Maximum' }[s.statistic];
+  const rows = periodStatistics(state.rows, s.metric, monthly ? 'month' : 'year', s.statistic, sameMonth ? s.month : null);
+  $('ex-title').textContent = monthly ? `${s.profile_year} month by month` : sameMonth ? `${monthName} across the years` : 'Year-by-year temperature statistics';
+  $('ex-description').textContent = `${statisticLabel} of ${METRICS[s.metric].toLowerCase()} values for each ${monthly || sameMonth ? 'complete calendar month' : 'complete calendar year'}. Missing coverage makes a period unavailable, including partial boundary years. These are historical temperatures; the reference baseline is unchanged.`;
+  $('ex-legend').textContent = `${statisticLabel} · ${METRICS[s.metric]} · ${s.mark} chart · °${s.unit.toUpperCase()}`;
+  lineChart($('ex-chart'), [{ name: `${statisticLabel} ${METRICS[s.metric].toLowerCase()}`, points: rows.map((r, i) => ({ x: i, label: r.period, y: toUnit(r.value, s.unit), detail: `${finite(r.value) ? shown(toUnit(r.value, s.unit)) + ' °' + s.unit.toUpperCase() : 'unavailable'} · ${r.valid}/${r.expected} days · ${r.status}` })) }], { title: $('ex-title').textContent, unit: `°${s.unit.toUpperCase()}`, inspect, mark: s.mark });
+  table([['period', monthly ? 'Month' : 'Year'], ['value_c', `${statisticLabel} (°${s.unit.toUpperCase()})`, v => shown(toUnit(v, s.unit))], ['valid', 'Valid days'], ['expected', 'Expected days'], ['status', 'Coverage status']], rows.map(r => ({ period: r.period, value_c: r.value, valid: r.valid, expected: r.expected, status: r.status })), 'The chart and CSV use these same complete-period statistics. Downloaded values stay in canonical Celsius and include the statistic, month, filters, and selected display unit.');
+}
+
 function renderFrost() {
   const s = state.selection, start = Number(s.start.slice(0, 4)), end = Number(s.end.slice(0, 4));
   const records = state.doc.annual.filter(r => r.threshold_c === s.threshold && r.season_year >= start && r.season_year <= end);
@@ -217,11 +242,23 @@ function render() {
   $('explorer-notice').textContent = state.manifest.data_kind === 'synthetic_demo' ? 'Synthetic demonstration — these are not actual weather measurements.' : 'Historical ERA5/Oikolab reanalysis. Archive freshness and export time are shown separately; this explorer does not fetch live weather.';
   $('ex-method').textContent = 'Temperature reference quantiles use linear interpolation and at least five paired valid years per calendar day. Frost quantiles use nearest rank and the published minimum confirmed-year requirement. Filtering the analysis period does not change the reference baseline.';
   renderStatistics();
-  if (s.view === 'frost') renderFrost(); else if (s.view === 'heatmap') renderHeatmap(); else if (s.view === 'seasonal') renderSeasonal(); else renderTemperature();
+  if (['annual', 'month-compare', 'monthly'].includes(s.view)) renderPeriodStatistics(); else if (s.view === 'frost') renderFrost(); else if (s.view === 'heatmap') renderHeatmap(); else if (s.view === 'seasonal') renderSeasonal(); else renderTemperature();
 }
 
 $('explorer-filters').addEventListener('submit', event => { event.preventDefault(); if (state.stations) openSelection($('ex-station').value, paramsFromForm()); });
-$('ex-view').addEventListener('change', () => { $('compare-control').hidden = $('ex-view').value !== 'compare'; $('threshold-control').hidden = $('ex-view').value !== 'frost'; $('ex-start').disabled = $('ex-end').disabled = $('ex-view').value === 'compare'; });
+$('ex-view').addEventListener('change', () => {
+  if (state.index && ['annual', 'month-compare'].includes($('ex-view').value) && !['annual', 'month-compare'].includes(state.selection.view)) {
+    $('ex-start').value = `${years()[0]}-01-01`;
+    const last = state.doc.source_coverage.last_date;
+    $('ex-end').value = `${last.endsWith('-12-31') ? years().at(-1) : years().length > 1 ? years().at(-2) : years()[0]}-12-31`;
+    $('ex-mark').value = 'bar';
+  }
+  if ($('ex-view').value === 'monthly') $('ex-mark').value = 'bar';
+  visibility();
+});
+for (let i = 1; i <= 3; i++) $('ex-year-' + i).addEventListener('change', () => {
+  $('ex-compare').value = [...new Set([1, 2, 3].map(i => $('ex-year-' + i).value).filter(Boolean))].join(',');
+});
 $('ex-station').addEventListener('change', () => openSelection($('ex-station').value, paramsFromForm()));
 $('ex-reset').addEventListener('click', () => openSelection(state.doc.station.station_id, new URLSearchParams()));
 $('ex-previous').onclick = () => { state.page--; renderTable(); };
@@ -230,8 +267,9 @@ $('ex-download').onclick = () => {
   const period = baseline(), s = state.selection;
   const metadata = { schema_version: state.manifest.schema_version, release_id: state.manifest.release_id, data_kind: state.manifest.data_kind, station_id: state.doc.station.station_id,
     view: s.view, start: s.view === 'compare' ? '' : s.view === 'frost' ? s.start.slice(0, 4) + '-01-01' : s.start, end: s.view === 'compare' ? '' : s.view === 'frost' ? s.end.slice(0, 4) + '-12-31' : s.end, comparison_years: s.view === 'compare' ? s.compare.join(';') : '', display_unit: s.unit, metric: s.metric,
+    statistic: ['annual', 'month-compare', 'monthly'].includes(s.view) ? s.statistic : '', selected_month: s.view === 'month-compare' ? s.month : '', chart_style: ['temperature', 'compare', 'annual', 'month-compare', 'monthly'].includes(s.view) ? s.mark : '',
     baseline_start: period.start_year, baseline_end: period.end_year, threshold_c: s.view === 'frost' ? s.threshold : '',
-    selection_scope: s.view === 'compare' ? 'full_comparison_years' : s.view === 'frost' ? 'full_seasonal_windows' : 'inclusive_local_dates' };
+    selection_scope: s.view === 'compare' ? 'full_comparison_years' : s.view === 'frost' ? 'full_seasonal_windows' : s.view === 'month-compare' ? 'selected_month_across_years' : s.view === 'annual' ? 'full_calendar_years' : s.view === 'monthly' ? 'full_profile_year' : 'inclusive_local_dates' };
   if (s.view === 'seasonal') Object.assign(metadata, { gdd_base_c: state.summary.policy.gdd.base_c, gdd_cap_c: state.summary.policy.gdd.cap_c, gdd_start: state.summary.policy.gdd.start, gdd_end: state.summary.policy.gdd.end, hdd_base_c: state.summary.policy.hdd_base_c, cold_threshold_c: state.summary.policy.cold_threshold_c, winter_months: '12;1;2', degree_day_unit: 'C_days' });
   // Frost CSV retains the full existing event contract, augmented with the selection metadata.
   let rows = state.table;

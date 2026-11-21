@@ -13,10 +13,21 @@
   <a class="skip-link" href="#main">Skip to the forecast</a>
   <header class="site-header wrap">
     <a class="brand" href="./" aria-label="IDWX Twin Falls weather home"><span class="brand-mark" aria-hidden="true">✳</span><span>IDWX <span class="brand-divider">/</span> <span class="brand-name">Twin Falls Weather</span></span></a>
-    <a href="explore.html" class="header-link">Explore data</a>
+    <a href="explore.html" class="header-link">Graphs & analytics</a>
     <a href="#historical" class="header-link">Frost history <span aria-hidden="true">↓</span></a>
   </header>
   <main id="main" class="wrap" tabindex="-1">
+    <section class="visualization-hub" aria-labelledby="visualizations-title">
+      <div class="section-heading"><div><p class="eyebrow">Explore the historical archive</p><h2 id="visualizations-title">Graphs & year comparisons</h2></div><a class="button" href="explore.html">Open all visualizations</a></div>
+      <p>Put Twin Falls seasons side by side. Choose daily temperatures, monthly patterns, or year-by-year statistics, with the source values and coverage behind each graph.</p>
+      <div class="visualization-links">
+        <a href="explore.html?view=compare"><strong>Compare years</strong><span>Overlay up to three years on one daily temperature chart.</span></a>
+        <a href="explore.html?view=month-compare"><strong>A month across years</strong><span>Compare January—or any month—with mean, minimum, or maximum statistics.</span></a>
+        <a href="explore.html?view=monthly"><strong>Monthly & yearly patterns</strong><span>Build line, scatter, bar, and area graphs from the historical record.</span></a>
+      </div>
+      <nav class="visualization-secondary" aria-label="More historical visualizations"><a href="explore.html?view=annual">Yearly statistics</a><a href="explore.html?view=heatmap">Temperature anomaly heatmap</a><a href="explore.html?view=frost">Freeze dates & frost-free intervals</a></nav>
+      <p class="small muted">Historical ERA5/Oikolab reanalysis, separate from the current observations and forecast guidance below.</p>
+    </section>
     <section id="forecast" class="forecast" aria-labelledby="forecast-title">
       <div class="forecast-heading">
         <div><p class="eyebrow">Twin Falls, Idaho · Multi-model analysis</p><h1 id="forecast-title">The next two weeks,<br>source by source.</h1></div>
