@@ -7,6 +7,8 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from idwx.precipitation import PRECIP_FIELDS, validate_precip
+
 TEMPERATURES = ("tmin_c", "tmax_c", "tmean_c")
 DAILY_FIELDS = {"date", *TEMPERATURES, "status", "n_obs"}
 
@@ -60,6 +62,11 @@ def temperature_summary(rows: list[dict]) -> dict:
             "min": min(values) if values else None, "max": max(values) if values else None,
         }
     result["complete"] = all(result[k]["valid_days"] == len(rows) for k in TEMPERATURES)
+    if rows and 'precip_mm' in rows[0]:
+        values = [r['precip_mm'] for r in rows if r['precip_status'] == 'complete']
+        result['precipitation'] = {'valid_days': len(values), 'expected_days': len(rows),
+                                   'total_mm': _total(values) if len(values) == len(rows) else None,
+                                   'wet_days_ge_1mm': sum(v >= 1 for v in values) if len(values) == len(rows) else None}
     return result
 
 
@@ -76,13 +83,13 @@ def summarize_daily(daily: dict[str, list[dict]], policy: dict | None = None) ->
     return result
 
 
-def validate_daily(year: int, rows: list[dict]) -> None:
+def validate_daily(year: int, rows: list[dict], *, precipitation: bool = False) -> None:
     """Strict public field/calendar validation; never trusts a matching checksum."""
     if not isinstance(rows, list) or len(rows) != 365 + calendar.isleap(year):
         raise ValueError("Invalid daily analytics calendar")
     for offset, row in enumerate(rows):
         expected = (date(year, 1, 1) + timedelta(days=offset)).isoformat()
-        if not isinstance(row, dict) or set(row) != DAILY_FIELDS or row["date"] != expected:
+        if not isinstance(row, dict) or set(row) != DAILY_FIELDS | (PRECIP_FIELDS if precipitation else set()) or row["date"] != expected:
             raise ValueError("Invalid daily analytics row")
         if row["status"] not in {"valid", "missing_record", "invalid_temperature"}:
             raise ValueError("Invalid daily analytics status")
@@ -90,6 +97,8 @@ def validate_daily(year: int, rows: list[dict]) -> None:
             value = row[key]
             if value is not None and (type(value) not in (int, float) or not math.isfinite(value)):
                 raise ValueError("Invalid daily analytics temperature")
+        if precipitation:
+            validate_precip(row)
         count = row["n_obs"]
         if count is not None and (type(count) is not int or count < 0):
             raise ValueError("Invalid daily analytics coverage")

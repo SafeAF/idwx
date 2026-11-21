@@ -37,6 +37,8 @@ packages = ["idwx"]
 "web/js/explorer.js" = "idwx/web_assets/js/explorer.js"
 "web/js/explorer-charts.js" = "idwx/web_assets/js/explorer-charts.js"
 
+"web/js/growing.js" = "idwx/web_assets/js/growing.js"
+
 [dependency-groups]
 dev = [
   "pytest>=8.0",

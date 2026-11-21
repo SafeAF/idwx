@@ -3,6 +3,8 @@ cache_dir: "data_cache"
 models_dir: "models"
 reports_dir: "reports"
 database_path: "data/idwx.sqlite3"
+precipitation_archives:
+  twin_falls: "data/precipitation/twin_falls.json"
 
 timezone: "America/Boise"
 

@@ -170,8 +170,13 @@ across years, monthly profiles, yearly mean/min/max statistics, selectable
 line/scatter/bar/area graphs, freeze-date distributions and verified
 frost-free intervals, monthly anomaly heatmaps, coverage-aware GDD/winter
 metrics, accessible tables, shareable filters, and matching CSV downloads.
-See the [implementation plan](docs/22_DATA_EXPLORER_PLAN.md) for scope and the
-remaining precipitation review.
+It also includes total-precipitation graphs (daily, monthly, yearly, year
+comparisons, and cumulative curves) and a growing-year assessment against
+your heat, frost-free-day, and optional precipitation requirements. Both are
+linked from the homepage. Reviewed precipitation covers January 1, 1980 through
+December 30, 2022; later amounts remain unavailable. Soil fertility is not
+inferred from weather. See [precipitation and growing-year methods](docs/24_PRECIPITATION_GROWING_ASSESSMENT.md)
+and the [implementation plan](docs/22_DATA_EXPLORER_PLAN.md).
 The Nginx configuration is in `deploy/nginx.conf` and allowlists those two API
 origins in `connect-src`. Research-forecast validation remains separate.
 

@@ -1,4 +1,4 @@
-# Static historical data contract, version 1.1.0
+# Static historical data contract, version 1.2.0
 
 This implements historical summaries from Phase 2 and the export contract of
 Phase 3 in `12_FROST_STATIC_WEBSITE_PLAN.md`. It does not publish model
@@ -206,7 +206,7 @@ has a bounded-content regression and is exercised by the real export in CI.
 ## Independent publication verification and portable delivery
 
 Run `uv run idwx verify-web PUBLICATION_DIRECTORY` before activation. This
-read-only check accepts schemas 1.0.0 and 1.1.0, verifies the active and every retained
+read-only check accepts schemas 1.0.0, 1.1.0, and 1.2.0, verifies the active and every retained
 release, canonical content identity, checksums, path/file/field allowlists,
 finite JSON values, event and interval consistency, recalculated historical
 summaries, and CSV/JSON agreement. Unexpected files or directories, private
@@ -265,7 +265,8 @@ retain individual finite fields even when one field is missing. Statistics
 count valid values separately per metric. Missing calendar rows carry only
 null values and a `missing_record` status, including outside the source span
 in boundary years. Internal quality-flag text and private source metadata are
-not published. Precipitation remains excluded pending its separate review.
+not published. Version 1.1.0 has no precipitation fields; version 1.2.0
+adds independently reviewed precipitation as described below.
 
 `summary.json` includes common fields, `station_id`, `months`, `years`,
 `policy`, and `seasons`. Monthly/yearly temperature records include the period,
@@ -299,7 +300,7 @@ after hashing. The verifier rebuilds this identity, validates daily calendars
 and source counts, and recomputes monthly/annual/seasonal summaries.
 
 Version 1.0.0 releases retain their original identity and field contract.
-Both versions may be active or retained together; old bytes are never
+All supported versions may be active or retained together; old bytes are never
 rewritten. The older release supports the existing homepage, while the new
 explorer requires 1.1.0 data and shows an explicit error on an older manifest.
 
@@ -321,3 +322,52 @@ length; missing leap days invalidate February instead of being imputed.
 CSV metadata includes `statistic`, `selected_month`, `chart_style`, and an
 explicit `selection_scope` (`full_calendar_years`,
 `selected_month_across_years`, or `full_profile_year` for these views).
+
+
+## Precipitation and growing-year extension (1.2.0)
+
+The asset allowlist adds `js/growing.js`. Every daily row adds:
+
+| Field | Contract |
+| --- | --- |
+| `precip_mm` | Nonnegative finite total water equivalent, or null. |
+| `precip_valid_hours` | Integer 0–24, or null for unreviewed days. |
+| `precip_expected_hours` | 24, or null for unreviewed days. |
+| `precip_status` | `complete` requires 24/24 and a total; `incomplete` requires fewer valid hours and null total; `not_reviewed` requires null amount and counts. |
+
+Temperature coverage does not control these fields. Monthly/yearly summaries
+add `precipitation` with `valid_days`, `expected_days`, `total_mm`, and
+`wet_days_ge_1mm`. Totals and wet-day counts require all calendar days;
+otherwise they are null. Zero remains a valid dry amount. Existing summary
+`complete` still describes temperature only.
+
+The analytics index and summary carry identical `precipitation_method` objects:
+`product`, `method`, `reporting_utc_offset_hours`, `first_complete_date`,
+`last_complete_date`, `source_sha256`, and `review_status`. Product is
+`total_precipitation_water_equivalent`; review status is
+`reviewed_hourly_archive`, `not_reviewed`, or explicitly `synthetic_demo`.
+The method documents hourly increments ending at their timestamp, assigned
+to the preceding hour and summed over fixed UTC−07 days with 24/24 coverage.
+Dates describe reviewed complete amounts, independently of temperature dates.
+
+Daily fields and summary metadata participate in the existing analytics
+content identity. The verifier checks their field/coverage invariants,
+recomputes totals, wet-day counts and coverage dates, and rejects synthetic
+precipitation in a real-data release. Internal consistency does not replace
+the [source audit](24_PRECIPITATION_GROWING_ASSESSMENT.md).
+
+The browser offers mm/in display, complete monthly/yearly totals, daily
+comparison of up to three full years, and continuous cumulative comparisons.
+A cumulative curve stops at its first missing day and resets only on January 1.
+Precipitation CSV numeric fields remain in canonical mm; metadata records the
+display unit, method, review cutoff, and actual date/year selection.
+
+The growing-year assessment is browser-derived from complete configured GDD
+windows, published verified frost-free intervals, and optional precipitation
+requirements over the same GDD window. URL/CSV metadata preserve requirements,
+threshold and policy. Each requirement is met, shortfall, unknown, or not
+selected. A known shortfall yields `requirements_not_met`; otherwise a required
+unknown yields `insufficient_data`; only all required checks met yields
+`requirements_met`. It adds no soil-fertility score, crop/yield prediction,
+irrigation estimate, or new model output. Versions 1.0.0 and 1.1.0 retain their
+original contracts and may coexist as immutable retained releases.

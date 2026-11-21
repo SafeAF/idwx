@@ -6,11 +6,19 @@ export const toUnit = (value, unit, difference = false) => finite(value) ? (unit
 export const mean = values => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 export const shown = value => finite(value) ? Number(value.toFixed(2)).toLocaleString('en-US') : '—';
 
+export function validatePrecipitation(row) {
+  const status = row.precip_status;
+  if (status === 'not_reviewed') return row.precip_mm === null && row.precip_valid_hours === null && row.precip_expected_hours === null;
+  if (!['complete', 'incomplete'].includes(status) || row.precip_expected_hours !== 24 || !Number.isInteger(row.precip_valid_hours) || row.precip_valid_hours < 0 || row.precip_valid_hours > 24) return false;
+  return status === 'complete' ? finite(row.precip_mm) && row.precip_mm >= 0 && row.precip_valid_hours === 24 : row.precip_mm === null && row.precip_valid_hours < 24;
+}
+
 export function validateChunk(doc, station, year) {
   const expected = new Date(Date.UTC(year + 1, 0, 1)) - new Date(Date.UTC(year, 0, 1));
   if (doc.station_id !== station || doc.year !== year || !Array.isArray(doc.days) || doc.days.length !== expected / 86400000) throw new Error('Invalid daily archive.');
   doc.days.forEach((row, i) => {
     const date = new Date(Date.UTC(year, 0, 1 + i)).toISOString().slice(0, 10);
+    if (doc.schema_version === '1.2.0' && !validatePrecipitation(row)) throw new Error('Invalid precipitation coverage.');
     if (row.date !== date || !['valid', 'invalid_temperature', 'missing_record'].includes(row.status) ||
         !Object.keys(METRICS).every(key => row[key] === null || finite(row[key])) ||
         (row.status === 'valid') !== Object.keys(METRICS).every(key => finite(row[key])) ||
@@ -22,20 +30,28 @@ export function validateChunk(doc, station, year) {
 
 export function normalizeSelection(params, years, thresholds, sourceLastDate = null) {
   const first = `${years[0]}-01-01`, last = `${years.at(-1)}-12-31`;
-  const defaultYear = sourceLastDate?.endsWith('-12-31') ? years.at(-1) : years.length > 1 ? years.at(-2) : years[0];
+  const sourceYear = Number(sourceLastDate?.slice(0, 4));
+  const completeYear = sourceLastDate?.endsWith('-12-31') ? sourceYear : sourceYear - 1;
+  const defaultYear = years.includes(completeYear) ? completeYear : years.length > 1 ? years.at(-2) : years[0];
   const clamp = (value, fallback) => dateParts(value) ? (value < first ? first : value > last ? last : value) : fallback;
   let start = clamp(params.get('start'), `${defaultYear}-01-01`);
   let end = clamp(params.get('end'), `${defaultYear}-12-31`);
   if (end < start) end = start;
   const compare = [...new Set((params.get('compare') || years.filter(y => y <= defaultYear).slice(-3).join(',')).split(',').map(Number).filter(y => years.includes(y)))].slice(0, 3);
-  const views = ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'frost', 'heatmap', 'seasonal', 'table'];
+  const views = ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'frost', 'heatmap', 'seasonal', 'table', 'precipitation', 'assessment'];
   const view = views.includes(params.get('view')) ? params.get('view') : 'temperature';
   if (['annual', 'month-compare'].includes(view) && !params.has('start')) start = first;
   const profileYear = years.includes(Number(params.get('profile_year'))) ? Number(params.get('profile_year')) : Number(start.slice(0, 4));
   if (view === 'monthly') { start = `${profileYear}-01-01`; end = `${profileYear}-12-31`; }
-  if (['annual', 'month-compare', 'frost'].includes(view)) { start = start.slice(0, 4) + '-01-01'; end = end.slice(0, 4) + '-12-31'; }
+  if (['annual', 'month-compare', 'frost', 'assessment'].includes(view)) { start = start.slice(0, 4) + '-01-01'; end = end.slice(0, 4) + '-12-31'; }
   return {
     view, start, end, profile_year: profileYear,
+    rain_mode: ['daily', 'monthly', 'yearly', 'compare', 'cumulative'].includes(params.get('rain_mode')) ? params.get('rain_mode') : 'monthly',
+    rain_unit: params.get('rain_unit') === 'in' ? 'in' : 'mm',
+    need_gdd: finite(Number(params.get('need_gdd'))) && params.has('need_gdd') ? Math.max(0, Math.min(10000, Number(params.get('need_gdd')))) : 1000,
+    need_days: finite(Number(params.get('need_days'))) && params.has('need_days') ? Math.round(Math.max(0, Math.min(366, Number(params.get('need_days'))))) : 100,
+    need_precip: finite(Number(params.get('need_precip'))) && params.has('need_precip') ? Math.max(0, Math.min(10000, Number(params.get('need_precip')))) : 0,
+    need_water: params.get('need_water') === 'on',
     month: Number.isInteger(Number(params.get('month'))) && Number(params.get('month')) >= 1 && Number(params.get('month')) <= 12 ? Number(params.get('month')) : 1,
     statistic: ['mean', 'min', 'max'].includes(params.get('statistic')) ? params.get('statistic') : 'mean',
     mark: ['line', 'scatter', 'bar', 'area'].includes(params.get('mark')) ? params.get('mark') : ['annual', 'month-compare', 'monthly'].includes(view) ? 'bar' : 'line',
@@ -47,11 +63,11 @@ export function normalizeSelection(params, years, thresholds, sourceLastDate = n
 }
 
 export function selectionYears(selection, available) {
-  return selection.view === 'compare' ? selection.compare : available.filter(y => y >= Number(selection.start.slice(0, 4)) && y <= Number(selection.end.slice(0, 4)));
+  return (selection.view === 'compare' || selection.view === 'precipitation' && ['compare', 'cumulative'].includes(selection.rain_mode)) ? selection.compare : available.filter(y => y >= Number(selection.start.slice(0, 4)) && y <= Number(selection.end.slice(0, 4)));
 }
 
 export function selectedRows(chunks, selection) {
-  return chunks.flatMap(chunk => chunk.days).filter(row => (selection.view === 'compare' || row.date >= selection.start && row.date <= selection.end) && (selection.view !== 'month-compare' || Number(row.date.slice(5, 7)) === selection.month)).sort((a, b) => a.date.localeCompare(b.date));
+  return chunks.flatMap(chunk => chunk.days).filter(row => (selection.view === 'compare' || selection.view === 'precipitation' && ['compare', 'cumulative'].includes(selection.rain_mode) || row.date >= selection.start && row.date <= selection.end) && (selection.view !== 'month-compare' || Number(row.date.slice(5, 7)) === selection.month)).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function statistics(rows) {

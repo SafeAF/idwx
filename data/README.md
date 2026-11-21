@@ -64,3 +64,31 @@ sqlite3 data/idwx.sqlite3 \
 
 Do not add another station implicitly. Adding a station requires an explicit
 configuration, storage, publication, and review change.
+
+## Reviewed precipitation supplement
+
+The explorer does not use the SQLite precipitation column: its original
+coverage flags were based on temperature, and its aggregation mode was chosen
+heuristically. `precipitation/twin_falls.json` is a compact derived daily input
+from the fingerprinted original hourly source above, without raw hourly rows.
+The database itself is unchanged.
+
+The supplement shifts each ERA5 hour-ending timestamp back one hour, then
+uses the source's fixed UTC−07 reporting day. It requires all 24 finite,
+nonnegative precipitation hours independently of temperature. Complete days
+span 1980-01-01 through 2022-12-30 (15,705 days). The two boundary dates are
+partial, with null totals; later refresh precipitation is not reviewed.
+Amounts are total precipitation, including snow-water equivalent, in mm.
+
+Canonical content SHA-256 (excluding its own digest field):
+`9c8bb5f6e97fed50548e6dcc291e0fc83db4e219c35191c7ebf625d00cfca9ea`.
+The exporter binds its source digest to the configured SQLite source record;
+other databases/configurations receive unavailable values rather than this
+station's amounts. Rebuild without collection or a database change:
+
+```sh
+.venv/bin/python scripts/build_precipitation_archive.py \
+  ../idaho-weather-data/archive/42.4634--114.4975-1980-01-01-2022-12-31-full-params-idaho.csv
+```
+
+See [methods, independent reference totals, and limitations](../docs/24_PRECIPITATION_GROWING_ASSESSMENT.md).

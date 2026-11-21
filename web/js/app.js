@@ -205,7 +205,7 @@ async function load() {
   busy('Loading the historical archive…');
   try {
     const manifest = await fetchJSON(new URL('data/manifest.json', base));
-    if (!['1.0.0', '1.1.0'].includes(manifest.schema_version) || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('Unsupported archive schema or release.');
+    if (!['1.0.0', '1.1.0', '1.2.0'].includes(manifest.schema_version) || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('Unsupported archive schema or release.');
     const index = validateRelease(await fetchJSON(releaseURL(manifest.stations_url, base, manifest.release_id)), manifest);
     if (!index.stations?.length) throw new Error('No stations are available.');
     state.manifest = manifest;

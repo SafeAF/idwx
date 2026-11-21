@@ -232,3 +232,43 @@ test('homepage offers prominent working links for each visualization family', ()
     }
   } finally { home.window.close(); }
 });
+
+test('precipitation totals and CSV keep independent coverage, water-equivalent units, and missing periods', async t => {
+  const { $, apply, blobs } = await explorer(t, { query: '?view=precipitation&start=2021-01-01&end=2021-12-31&rain_mode=monthly&rain_unit=in' });
+  assert.equal($('explorer-results').hidden, false, $('explorer-status').textContent);
+  assert.match($('ex-description').textContent, /Rain and snow-water equivalent/);
+  assert.equal($('rain-unit-control').hidden, false); assert.equal($('requirements-control').hidden, true);
+  assert.equal($('ex-table-body').children.length, 12);
+  const june = [...$('ex-table-body').children].find(tr => tr.firstChild.textContent === '2021-06');
+  assert.equal(june.children[1].textContent, '—'); assert.equal(june.children[3].textContent, '29'); assert.equal(june.children[4].textContent, '30');
+  $('ex-download').click(); const exported = await [...blobs.values()][0].text();
+  assert.match(exported, /total_mm/); assert.match(exported, /precipitation_unit/); assert.match(exported, /"monthly","in","-7"/);
+  await apply({ rain_mode: 'cumulative', compare: '2020,2021', mark: 'line' });
+  assert.equal($('ex-start').disabled, true); assert.equal($('compare-control').hidden, false);
+  assert.match($('ex-table-head').textContent, /Continuous year total/);
+});
+
+test('growing-year requirements persist in URL and CSV and missing required evidence cannot pass', async t => {
+  const { $, apply, blobs, window } = await explorer(t, { query: '?view=assessment&start=2022-01-01&end=2022-12-31&need_gdd=0&need_days=0&need_water=on&need_precip=0' });
+  assert.equal($('requirements-control').hidden, false); assert.equal($('ex-need_water').checked, true);
+  assert.equal($('threshold-control').hidden, false);
+  assert.match($('ex-table-body').textContent, /Selected climate requirements met/);
+  assert.match($('ex-statistics').textContent, /Soil fertilityNot assessed/);
+  assert.match($('ex-extra').textContent, /Soil fertility needs site-specific soil measurements/);
+  $('ex-download').click(); const exported = await [...blobs.values()][0].text();
+  assert.match(exported, /minimum_frost_free_days/); assert.match(exported, /gdd_base_c/);
+  assert.match(exported, /requirements_met/); assert.match(exported, /full_seasonal_windows/);
+  await apply({ start: '2021-01-01', end: '2021-12-31' });
+  assert.match($('ex-table-body').textContent, /Insufficient data/);
+  assert.equal(new URL(window.location.href).searchParams.get('need_water'), 'on');
+});
+
+test('malformed precipitation cannot be rendered as complete even when temperature is valid', async t => {
+  const { $ } = await explorer(t, { query: '?view=precipitation&start=2020-01-01&end=2020-12-31', route: parsed => {
+    if (parsed.pathname.endsWith('/daily/2020.json')) {
+      const data = JSON.parse(files.get(parsed.pathname)); data.days[0].precip_valid_hours = 23;
+      return { ok: true, json: async () => data };
+    }
+  } });
+  assert.equal($('explorer-results').hidden, true); assert.match($('explorer-status').textContent, /precipitation coverage/);
+});

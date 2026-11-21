@@ -1,7 +1,7 @@
 # Historical explorer: implementation and verification
 
 Implemented locally November 21, 2026, on `main`, based on
-`936c7b7` plus the current uncommitted graph-builder enhancements.
+`2d2203e` plus the current uncommitted precipitation and growing-year changes.
 This is implementation and local verification evidence, not production
 activation or visual browser acceptance.
 
@@ -53,9 +53,9 @@ The historical explorer makes no live weather-provider requests.
 
 ## Data and implementation
 
-The batch exporter adds schema 1.1.0 annual daily chunks and verified
+The batch exporter adds schema 1.2.0 annual daily chunks and verified
 monthly/yearly/seasonal summaries. SQLite, hourly data, private source metadata,
-and research artifacts remain outside the publication. Existing 1.0.0 releases
+and research artifacts remain outside the publication. Existing 1.0.0 and 1.1.0 releases
 can remain active or retained alongside new releases without rewriting bytes.
 See [the data contract](14_WEB_DATA_CONTRACT.md) for exact fields and hashing.
 
@@ -74,21 +74,21 @@ new daily chunks. New assets are included in both checkout and wheel exports.
 
 | Check | Result |
 | --- | --- |
-| Full Python suite | 238 passed; 2 optional Nginx tests skipped because Nginx is unavailable |
-| Full frontend suite | 52 passed with Node 24.22.1 and the existing jsdom dependency |
-| Focused analytics/explorer checks after final adjustments | 5 Python and 13 frontend checks passed |
+| Full Python suite | 244 passed; 2 optional Nginx tests skipped because Nginx is unavailable |
+| Full frontend suite | 58 passed with Node 24.22.1 and the existing jsdom dependency |
 | Ruff on modified Python files and whitespace checks | Passed |
 | Real Twin Falls export, verification, ZIP extraction/reverification | Passed; `historical_reanalysis`, 1 station, 94 annual threshold records |
 | Wheel export from extracted package | Passed |
 | Wheel installed in a fresh isolated environment with locked dependencies | Export, verification, and packaging passed |
 | Loopback static HTTP | Explorer HTML, JS, CSS, daily JSON, and frost CSV returned 200 with expected MIME types; missing/source/database paths returned 404 |
-| Default shell plus selected data payload | Approximately 62 KB gzip (sum of individually compressed files), below the proposed 1 MB budget |
-| Full archive cached filter calculation and DOM rendering | 97.9 ms on Node/jsdom, AMD Ryzen 7 5700G, with zero additional data requests; not a browser layout benchmark |
+| Prior 1.1.0 default shell plus selected data payload | Approximately 62 KB gzip (sum of individually compressed files), below the proposed 1 MB budget |
+| Prior 1.1.0 full archive cached filter calculation and DOM rendering | 97.9 ms on Node/jsdom, AMD Ryzen 7 5700G, with zero additional data requests; not a browser layout benchmark |
 
 The real export uses the existing committed database, unchanged at SHA-256
 `cb7f325643d26648aac229ff6d01077c3eee7246675b34a2b328df135a9e40ce`.
 It contains data through local date November 7, 2026. The data release ID is
-`4896343496264db793a9674c26e004fee1f19f679f2ec06f6a2591221ea7ea3e`.
+`2d205c7f80159f444c418a127f6dbd7da274b51d93c3abc9880153e1176f844b`.
+Precipitation has its own reviewed cutoff, December 30, 2022.
 The ignored delivery directory `.tmp/explorer-delivery/` contains the verified
 real-data ZIP and wheel; the ZIP checksum is recorded in `SHA256SUMS.txt`
 there. Export timestamps and frontend changes can change ZIP bytes without
@@ -102,9 +102,10 @@ screen-reader behavior remain unverified. DOM checks do not replace those
 checks. Loopback Python HTTP checks do not establish Nginx caching, TLS, or
 production behavior; the existing optional Nginx suite was skipped.
 
-Precipitation analytics remain excluded until source interval/reset semantics
-and precipitation-specific coverage pass the review specified in
-[the plan](22_DATA_EXPLORER_PLAN.md). Custom baselines, fitted trends,
+Precipitation analytics use only the independently reviewed original hourly
+archive; refresh-period precipitation remains unavailable. See the
+[source audit and growing-year methods](24_PRECIPITATION_GROWING_ASSESSMENT.md).
+Custom baselines, fitted trends,
 release-pinned sharing, and research-model comparisons remain later work.
 No database refresh, new data collection, production deployment, or host/vhost
 changes were performed.
@@ -120,6 +121,23 @@ additional variables, accounts, or study database were introduced.
 
 The additional graph-builder tests independently check known arithmetic
 means/extremes, leap-month completeness, year dropdowns, CSV scope, identical
-tables across chart styles, and homepage links. The full frontend suite now
-passes 52 checks. Browser access remains unavailable; the live local preview
+tables across chart styles, and homepage links. That graph-builder increment passed 52 frontend checks; the current
+suite passes 58. Browser access remains unavailable; the live local preview
 is refreshed for owner review.
+
+
+## Precipitation and growing-year follow-up
+
+The real schema 1.2.0 publication passed verification, ZIP extraction and
+reverification, retaining the prior immutable 1.1.0 release. Both extracted-wheel
+and isolated installed-wheel exports, verification and packaging passed. The
+new module is present in each package. Ruff and whitespace checks passed.
+
+A real-data Node/jsdom smoke check rendered the default precipitation view
+as 12 months of 2021, 365/365 valid reporting days, 331.86 mm total, and 70
+wet days. The growing-year view rendered 46 years (1980–2025), both charts,
+per-requirement results and the explicit soil-fertility limitation. Both views
+requested only local static publication data, with no weather-provider calls.
+The HTTP preview returned 200 for the refreshed explorer. These are DOM/HTTP
+checks, not native browser visual review. See the local artifact receipt in
+`.tmp/explorer-delivery/verification-receipt.json` for current full digests.

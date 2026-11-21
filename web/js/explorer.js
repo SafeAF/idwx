@@ -2,6 +2,7 @@ import { EVENT_NAMES, calendarDay, releaseURL, statusLabel, temperature, validat
 import { METRICS, aggregate, csv, finite, frostDistribution, monthlyAnomalies, normalizeSelection, periodStatistics, seasonalMetrics, selectedRows, selectionYears, shown, statistics, toUnit, validateChunk } from './analytics.js';
 import { renderHistory } from './charts.js';
 import { lineChart, temperatureSeries } from './explorer-charts.js';
+import { cumulativePrecipitation, growingAssessment, precipitationPeriods, precipitationStats, precipToUnit } from './growing.js';
 
 const $ = id => document.getElementById(id);
 const base = new URL('.', location.href);
@@ -28,18 +29,23 @@ const releaseDocument = async (path, signal) => validateRelease(await fetchJSON(
 function visibility() {
   const view = $('ex-view').value;
   const custom = ['annual', 'month-compare', 'monthly'].includes(view);
-  $('compare-control').hidden = view !== 'compare'; $('threshold-control').hidden = view !== 'frost';
+  const rain = view === 'precipitation';
+  const rainCompare = rain && ['compare', 'cumulative'].includes($('ex-rain_mode').value);
+  $('rain-mode-control').hidden = $('rain-unit-control').hidden = !rain;
+  $('requirements-control').hidden = view !== 'assessment';
+  $('compare-control').hidden = view !== 'compare' && !rainCompare; $('threshold-control').hidden = !['frost', 'assessment'].includes(view);
   $('profile-year-control').hidden = view !== 'monthly'; $('month-control').hidden = view !== 'month-compare';
   $('statistic-control').hidden = !custom;
-  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly'].includes(view);
-  $('ex-start').disabled = $('ex-end').disabled = ['compare', 'monthly'].includes(view);
-  $('ex-metric').disabled = view === 'frost' || view === 'seasonal';
+  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'precipitation', 'assessment'].includes(view);
+  $('ex-start').disabled = $('ex-end').disabled = (['compare', 'monthly'].includes(view) || rainCompare);
+  $('ex-metric').disabled = ['frost', 'seasonal', 'precipitation', 'assessment'].includes(view);
+  $('ex-unit').disabled = rain;
   $('ex-baseline').disabled = !['temperature', 'compare'].includes(view);
 }
 function syncControls() {
   const s = state.selection;
-  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year']) $('ex-' + key).value = s[key];
-  $('ex-compare').value = s.compare.join(','); $('ex-baseline').checked = s.baseline;
+  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) $('ex-' + key).value = s[key];
+  $('ex-compare').value = s.compare.join(','); $('ex-baseline').checked = s.baseline; $('ex-need_water').checked = s.need_water;
   for (let i = 1; i <= 3; i++) $('ex-year-' + i).value = s.compare[i - 1] ?? '';
   document.querySelectorAll('.explorer-shortcuts a').forEach(a => { if (new URL(a.href).searchParams.get('view') === s.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   visibility();
@@ -47,14 +53,15 @@ function syncControls() {
 function writeURL() {
   const url = new URL(location.href), s = state.selection;
   url.searchParams.set('station', state.doc.station.station_id);
-  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year']) url.searchParams.set(key, s[key]);
-  url.searchParams.set('compare', s.compare.join(',')); url.searchParams.set('baseline', s.baseline ? 'on' : 'off');
+  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) url.searchParams.set(key, s[key]);
+  url.searchParams.set('compare', s.compare.join(',')); url.searchParams.set('baseline', s.baseline ? 'on' : 'off'); url.searchParams.set('need_water', s.need_water ? 'on' : 'off');
   if (url.href !== location.href) history.pushState(null, '', url);
 }
 function paramsFromForm() {
   const params = new URLSearchParams();
-  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'compare', 'month', 'statistic', 'mark', 'profile_year']) params.set(key, $('ex-' + key).value);
+  for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'compare', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) params.set(key, $('ex-' + key).value);
   params.set('baseline', $('ex-baseline').checked ? 'on' : 'off');
+  params.set('need_water', $('ex-need_water').checked ? 'on' : 'off');
   return params;
 }
 function showError(error, request) {
@@ -75,11 +82,16 @@ async function openSelection(stationID, params, push = true) {
     if (!doc.analytics_url) throw new Error('This release has no daily explorer data.');
     const index = await releaseDocument(doc.analytics_url, signal);
     if (index.station_id !== entry.station.station_id || !Array.isArray(index.years) || !index.years.length || index.years.some((r, i) => !Number.isInteger(r.year) || r.year !== Number(doc.source_coverage.first_date.slice(0, 4)) + i)) throw new Error('Invalid analytics index.');
-    const selection = normalizeSelection(params, index.years.map(y => y.year), doc.thresholds_c, doc.source_coverage.last_date);
+    const normalized = new URLSearchParams(params);
+    if (params.get('view') === 'precipitation' && !params.has('mark')) normalized.set('mark', ['compare', 'cumulative'].includes(params.get('rain_mode')) ? 'line' : 'bar');
+    if (params.get('view') === 'assessment' && !params.has('start')) normalized.set('start', `${doc.season_years.start_year}-01-01`);
+    const coverageDate = params.get('view') === 'precipitation' ? index.precipitation_method?.last_complete_date : doc.source_coverage.last_date;
+    const selection = normalizeSelection(normalized, index.years.map(y => y.year), doc.thresholds_c, coverageDate);
+    if (selection.view === 'precipitation' && !index.precipitation_method) throw new Error('This release has no reviewed precipitation data.');
     // Do not overwrite the active view until all files for its selection arrive.
     const needed = selectionYears(selection, index.years.map(y => y.year));
     const chunks = await Promise.all(needed.map(async year => validateChunk(await releaseDocument(index.years.find(y => y.year === year).url, signal), entry.station.station_id, year)));
-    const summary = selection.view === 'seasonal' ? await releaseDocument(index.summary_url, signal) : null;
+    const summary = ['seasonal', 'assessment'].includes(selection.view) ? await releaseDocument(index.summary_url, signal) : null;
     if (summary && (summary.station_id !== entry.station.station_id || !summary.policy)) throw new Error('Invalid seasonal analytics.');
     if (request !== state.request || signal.aborted) return;
     Object.assign(state, { doc, index, selection, summary, rows: selectedRows(chunks, selection), page: 0 });
@@ -92,7 +104,7 @@ async function openSelection(stationID, params, push = true) {
     syncControls(); if (push) writeURL();
     render();
     $('explorer-results').hidden = false; $('ex-download').disabled = !state.table.length;
-    $('explorer-status').textContent = `${doc.station.name}: ${selection.view === 'compare' ? selection.compare.join(', ') : selection.start + ' through ' + selection.end} loaded.`;
+    $('explorer-status').textContent = `${doc.station.name}: ${(selection.view === 'compare' || selection.view === 'precipitation' && ['compare', 'cumulative'].includes(selection.rain_mode)) ? selection.compare.join(', ') : selection.start + ' through ' + selection.end} loaded.`;
   } catch (error) { showError(error, request); }
 }
 
@@ -232,17 +244,61 @@ function renderSeasonal() {
   lineChart($('ex-chart'), [{ name: 'Complete growing-season GDD', points: rows.map(r => ({ x: r.year, label: String(r.year), y: r.gdd })) }], { title: 'Complete growing-season GDD', unit: '°C·days', inspect });
   table([['year', 'Year'], ['gdd', 'Final GDD (°C·days)', shown], ['gdd_subtotal', 'Continuous GDD subtotal', shown], ['through', 'Subtotal through'], ['gdd_valid', 'Valid GDD days'], ['gdd_expected', 'Expected GDD days'], ['hdd', 'Winter HDD (°C·days)', shown], ['cold_days', 'Winter cold days'], ['cold_run', 'Longest cold run (days)'], ['winter_valid', 'Valid winter days'], ['winter_expected', 'Expected winter days']], rows, 'December belongs to the following winter year. Include the preceding December in your date range for a complete winter. Partial periods cannot produce final totals or confirmed maximum cold runs.');
 }
+function renderPrecipitation() {
+  const s = state.selection, method = state.index.precipitation_method, unit = s.rain_unit;
+  const compare = ['compare', 'cumulative'].includes(s.rain_mode);
+  $('ex-title').textContent = { daily: 'Daily total precipitation', monthly: 'Monthly precipitation totals', yearly: 'Yearly precipitation totals', compare: 'Daily precipitation, year by year', cumulative: 'Cumulative precipitation by year' }[s.rain_mode];
+  $('ex-description').textContent = `Rain and snow-water equivalent, reported in ${unit}. Reviewed complete reporting days: ${method.first_complete_date ?? 'none'} through ${method.last_complete_date ?? 'none'}. The source uses fixed UTC−07:00 days. Later precipitation is unreviewed and stays unavailable. Cumulative totals stop at the first missing day; final period totals require every day.`;
+  $('ex-legend').textContent = compare ? s.compare.map((year, i) => `${year} · ${['green', 'rust', 'blue'][i]}`).join(' / ') : 'Total precipitation · wet day = at least 1 mm · gaps remain unavailable';
+  const stats = precipitationStats(state.rows);
+  $('ex-statistics').replaceChildren(card('Precipitation coverage', `${stats.valid}/${stats.expected}`, 'Reviewed complete / selected reporting days'),
+    card('Complete selection total', `${shown(precipToUnit(stats.total, unit))} ${unit}`, stats.complete ? 'Every selected reporting day is complete' : 'Unavailable for an incomplete selection'),
+    card('Mean of available daily amounts', `${shown(precipToUnit(stats.dailyMean, unit))} ${unit}`, 'Uses reviewed days only'),
+    card('Wet days among valid days', stats.valid ? String(stats.wetDays) : '—', 'At least 1 mm of total precipitation'));
+  let rows, series;
+  if (['monthly', 'yearly'].includes(s.rain_mode)) {
+    rows = precipitationPeriods(state.rows, s.rain_mode === 'yearly' ? 'year' : 'month');
+    series = [{ name: 'Total precipitation', points: rows.map((r, i) => ({ x: i, label: r.period, y: precipToUnit(r.total_mm, unit), detail: `${finite(r.total_mm) ? shown(precipToUnit(r.total_mm, unit)) + ' ' + unit : 'unavailable'} · ${r.valid_days}/${r.expected_days} days` })) }];
+    table([['period', 'Period'], ['total_mm', `Total (${unit})`, v => shown(precipToUnit(v, unit))], ['wet_days_ge_1mm', 'Wet days (≥1 mm)'], ['valid_days', 'Valid days'], ['expected_days', 'Expected days'], ['status', 'Coverage']], rows, 'Totals and wet-day counts require complete reporting days. Downloaded amounts use millimeters; the selected display unit and source method are recorded.');
+  } else {
+    rows = s.rain_mode === 'cumulative' ? cumulativePrecipitation(state.rows) : state.rows;
+    const key = s.rain_mode === 'cumulative' ? 'cumulative_mm' : 'precip_mm';
+    const groupYears = compare ? s.compare : [null];
+    series = groupYears.map((year, i) => ({ name: year === null ? 'Daily precipitation' : String(year), color: ['#36644b', '#aa5735', '#385f91'][i], dash: ['', '7 3', '2 3'][i], points: rows.filter(r => year === null || Number(r.date.slice(0, 4)) === year).map((r, index) => ({ x: compare ? calendarDay(r.date) : index, label: compare ? r.date.slice(5) : r.date, y: precipToUnit(r[key], unit), detail: `${r.date}: ${finite(r[key]) ? shown(precipToUnit(r[key], unit)) + ' ' + unit : 'unavailable'} · ${r.precip_status}` })) }));
+    table([['date', 'Reporting date (UTC−07)'], ['precip_mm', `Daily total (${unit})`, v => shown(precipToUnit(v, unit))], ...(s.rain_mode === 'cumulative' ? [['cumulative_mm', `Continuous year total (${unit})`, v => shown(precipToUnit(v, unit))]] : []), ['precip_valid_hours', 'Valid hours'], ['precip_expected_hours', 'Expected hours'], ['precip_status', 'Precipitation coverage']], rows.map(r => ({ date: r.date, precip_mm: r.precip_mm, ...(s.rain_mode === 'cumulative' ? { cumulative_mm: r.cumulative_mm } : {}), precip_valid_hours: r.precip_valid_hours, precip_expected_hours: r.precip_expected_hours, precip_status: r.precip_status })), 'Each daily amount requires all 24 precipitation hours independently of temperature coverage. A cumulative curve stops at its first gap. CSV values remain in millimeters.');
+  }
+  lineChart($('ex-chart'), series, { title: $('ex-title').textContent, unit, inspect, mark: s.mark });
+}
+function renderAssessment() {
+  const s = state.selection, policy = state.summary.policy;
+  const requirements = { gdd: s.need_gdd, days: s.need_days, water: s.need_water, precip_mm: s.need_precip };
+  const rows = growingAssessment(state.rows, state.doc.annual, policy, requirements, s.threshold);
+  const labels = { requirements_met: 'Selected climate requirements met', requirements_not_met: 'Selected requirements not met', insufficient_data: 'Insufficient data', met: 'Met', shortfall: 'Shortfall', unknown: 'Unknown', not_selected: 'Not selected' };
+  $('ex-title').textContent = 'Growing-year climate assessment';
+  $('ex-description').textContent = `Historical comparison with your requirements: GDD ≥ ${s.need_gdd} °C·days (base ${policy.gdd.base_c} °C, ${policy.gdd.start}–${policy.gdd.end}, ${policy.gdd.cap_c === null ? 'no upper cap' : 'cap ' + policy.gdd.cap_c + ' °C'}), verified frost-free interval ≥ ${s.need_days} days at ${temperature(s.threshold, s.unit)}. ${s.need_water ? 'Season precipitation ≥ ' + s.need_precip + ' mm.' : 'Precipitation is shown as context and is not a pass/fail requirement.'} These example requirements are yours to set; no future season or yield is predicted.`;
+  $('ex-legend').textContent = 'Historical heat and frost-free windows are separate checks. A missing required metric cannot pass. Precipitation is total water equivalent, not effective crop water or an irrigation estimate.';
+  const count = status => rows.filter(r => r.assessment === status).length;
+  $('ex-statistics').replaceChildren(card('Requirements met', String(count('requirements_met')), 'Historical years meeting every selected requirement'), card('Requirements not met', String(count('requirements_not_met')), 'At least one known shortfall'), card('Insufficient data', String(count('insufficient_data')), 'A required metric is unavailable'), card('Soil fertility', 'Not assessed', 'No soil nutrient, organic matter, or pH measurements'));
+  lineChart($('ex-chart'), [{ name: 'Complete-season GDD', points: rows.map(r => ({ x: r.year, label: String(r.year), y: r.gdd })) }, { name: 'Your minimum GDD', reference: true, dash: '6 4', points: rows.map(r => ({ x: r.year, label: String(r.year), y: s.need_gdd })) }], { title: 'Growing degree-days against your requirement', unit: '°C·days', inspect, mark: s.mark });
+  const interval = node('div', undefined, 'chart explorer-chart'); interval.tabIndex = 0; interval.setAttribute('role', 'region'); interval.setAttribute('aria-label', 'Frost-free days against selected requirement');
+  $('ex-extra').append(node('h3', 'Verified frost-free days'), interval);
+  lineChart(interval, [{ name: 'Verified interval', points: rows.map(r => ({ x: r.year, label: String(r.year), y: r.frost_free_days })) }, { name: 'Your minimum days', reference: true, dash: '6 4', points: rows.map(r => ({ x: r.year, label: String(r.year), y: s.need_days })) }], { title: 'Frost-free days against your requirement', unit: 'days', inspect, mark: s.mark });
+  const note = node('p', 'Soil fertility needs site-specific soil measurements. Weather records cannot establish nutrient availability, pH, soil moisture, or crop yield. ');
+  const link = node('a', 'About soil testing'); link.href = 'https://extension.umn.edu/garden-and-home/yard-and-garden/gardening-in-minnesota/soil-testing-for-lawns-and-gardens'; note.append(link); $('ex-extra').append(note);
+  table([['year', 'Year'], ['assessment', 'Climate requirement result', v => labels[v]], ['gdd', 'GDD (°C·days)', shown], ['heat_requirement', 'Heat requirement', v => labels[v]], ['frost_free_days', 'Verified frost-free days'], ['frost_free_requirement', 'Frost-free requirement', v => labels[v]], ['seasonal_precip_mm', 'Season precipitation (mm)', shown], ['precipitation_requirement', 'Precipitation requirement', v => labels[v]], ['gdd_valid', 'Valid GDD days'], ['gdd_expected', 'Expected GDD days'], ['precip_valid_days', 'Valid precipitation days'], ['precip_expected_days', 'Expected precipitation days'], ['frost_status', 'Interval coverage', statusLabel]], rows, 'All years use full configured seasonal windows. Missing required data cannot produce a passing result. A known shortfall is reported even when a different metric is unknown. These are historical climate checks, not soil-fertility or crop-success scores.');
+}
+
 function render() {
   const s = state.selection, period = baseline();
   $('ex-extra').replaceChildren(); $('ex-chart').replaceChildren(); $('ex-chart').onkeydown = null;
   inspect('Select a chart position or use the arrow keys to inspect values.');
-  $('ex-period').textContent = s.view === 'compare' ? `Full years ${s.compare.join(' / ')}` : `${s.start} through ${s.end}`;
+  $('ex-period').textContent = (s.view === 'compare' || s.view === 'precipitation' && ['compare', 'cumulative'].includes(s.rain_mode)) ? `Full years ${s.compare.join(' / ')}` : `${s.start} through ${s.end}`;
   $('ex-provenance').textContent = `${state.doc.station.name} · ${state.manifest.data_kind} · ${state.doc.station.timezone} · Source through ${state.doc.source_coverage.last_date} · Reference baseline ${period.start_year}–${period.end_year} · Exported ${state.manifest.generated_at_utc} · Release ${state.manifest.release_id}`;
   $('explorer-notice').hidden = false;
   $('explorer-notice').textContent = state.manifest.data_kind === 'synthetic_demo' ? 'Synthetic demonstration — these are not actual weather measurements.' : 'Historical ERA5/Oikolab reanalysis. Archive freshness and export time are shown separately; this explorer does not fetch live weather.';
   $('ex-method').textContent = 'Temperature reference quantiles use linear interpolation and at least five paired valid years per calendar day. Frost quantiles use nearest rank and the published minimum confirmed-year requirement. Filtering the analysis period does not change the reference baseline.';
   renderStatistics();
-  if (['annual', 'month-compare', 'monthly'].includes(s.view)) renderPeriodStatistics(); else if (s.view === 'frost') renderFrost(); else if (s.view === 'heatmap') renderHeatmap(); else if (s.view === 'seasonal') renderSeasonal(); else renderTemperature();
+  if (s.view === 'precipitation') renderPrecipitation(); else if (s.view === 'assessment') renderAssessment(); else if (['annual', 'month-compare', 'monthly'].includes(s.view)) renderPeriodStatistics(); else if (s.view === 'frost') renderFrost(); else if (s.view === 'heatmap') renderHeatmap(); else if (s.view === 'seasonal') renderSeasonal(); else renderTemperature();
 }
 
 $('explorer-filters').addEventListener('submit', event => { event.preventDefault(); if (state.stations) openSelection($('ex-station').value, paramsFromForm()); });
@@ -254,8 +310,17 @@ $('ex-view').addEventListener('change', () => {
     $('ex-mark').value = 'bar';
   }
   if ($('ex-view').value === 'monthly') $('ex-mark').value = 'bar';
+  if ($('ex-view').value === 'precipitation' && state.index?.precipitation_method?.last_complete_date) {
+    const date = state.index.precipitation_method.last_complete_date;
+    const year = Number(date.slice(0, 4)) - (date.endsWith('12-31') ? 0 : 1);
+    $('ex-start').value = `${year}-01-01`; $('ex-end').value = `${year}-12-31`;
+    $('ex-compare').value = years().filter(y => y <= year).slice(-3).join(',');
+    for (let i = 1; i <= 3; i++) $('ex-year-' + i).value = $('ex-compare').value.split(',')[i - 1] ?? '';
+    $('ex-mark').value = 'bar';
+  }
   visibility();
 });
+$('ex-rain_mode').addEventListener('change', visibility);
 for (let i = 1; i <= 3; i++) $('ex-year-' + i).addEventListener('change', () => {
   $('ex-compare').value = [...new Set([1, 2, 3].map(i => $('ex-year-' + i).value).filter(Boolean))].join(',');
 });
@@ -265,12 +330,15 @@ $('ex-previous').onclick = () => { state.page--; renderTable(); };
 $('ex-next').onclick = () => { state.page++; renderTable(); };
 $('ex-download').onclick = () => {
   const period = baseline(), s = state.selection;
+  const comparison = s.view === 'compare' || s.view === 'precipitation' && ['compare', 'cumulative'].includes(s.rain_mode);
   const metadata = { schema_version: state.manifest.schema_version, release_id: state.manifest.release_id, data_kind: state.manifest.data_kind, station_id: state.doc.station.station_id,
-    view: s.view, start: s.view === 'compare' ? '' : s.view === 'frost' ? s.start.slice(0, 4) + '-01-01' : s.start, end: s.view === 'compare' ? '' : s.view === 'frost' ? s.end.slice(0, 4) + '-12-31' : s.end, comparison_years: s.view === 'compare' ? s.compare.join(';') : '', display_unit: s.unit, metric: s.metric,
-    statistic: ['annual', 'month-compare', 'monthly'].includes(s.view) ? s.statistic : '', selected_month: s.view === 'month-compare' ? s.month : '', chart_style: ['temperature', 'compare', 'annual', 'month-compare', 'monthly'].includes(s.view) ? s.mark : '',
-    baseline_start: period.start_year, baseline_end: period.end_year, threshold_c: s.view === 'frost' ? s.threshold : '',
-    selection_scope: s.view === 'compare' ? 'full_comparison_years' : s.view === 'frost' ? 'full_seasonal_windows' : s.view === 'month-compare' ? 'selected_month_across_years' : s.view === 'annual' ? 'full_calendar_years' : s.view === 'monthly' ? 'full_profile_year' : 'inclusive_local_dates' };
-  if (s.view === 'seasonal') Object.assign(metadata, { gdd_base_c: state.summary.policy.gdd.base_c, gdd_cap_c: state.summary.policy.gdd.cap_c, gdd_start: state.summary.policy.gdd.start, gdd_end: state.summary.policy.gdd.end, hdd_base_c: state.summary.policy.hdd_base_c, cold_threshold_c: state.summary.policy.cold_threshold_c, winter_months: '12;1;2', degree_day_unit: 'C_days' });
+    view: s.view, start: comparison ? '' : s.view === 'frost' ? s.start.slice(0, 4) + '-01-01' : s.start, end: comparison ? '' : s.view === 'frost' ? s.end.slice(0, 4) + '-12-31' : s.end, comparison_years: comparison ? s.compare.join(';') : '', display_unit: s.view === 'precipitation' ? s.rain_unit : s.unit, metric: s.view === 'precipitation' ? 'total_precipitation' : s.view === 'assessment' ? 'growing_year_requirements' : s.metric,
+    statistic: ['annual', 'month-compare', 'monthly'].includes(s.view) ? s.statistic : '', selected_month: s.view === 'month-compare' ? s.month : '', chart_style: ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'precipitation', 'assessment'].includes(s.view) ? s.mark : '',
+    baseline_start: period.start_year, baseline_end: period.end_year, threshold_c: ['frost', 'assessment'].includes(s.view) ? s.threshold : '',
+    selection_scope: comparison ? 'full_comparison_years' : ['frost', 'assessment'].includes(s.view) ? 'full_seasonal_windows' : s.view === 'month-compare' ? 'selected_month_across_years' : s.view === 'annual' ? 'full_calendar_years' : s.view === 'monthly' ? 'full_profile_year' : 'inclusive_local_dates' };
+  if (s.view === 'precipitation') Object.assign(metadata, { precipitation_view: s.rain_mode, precipitation_unit: s.rain_unit, reporting_utc_offset_hours: -7, precipitation_last_reviewed: state.index.precipitation_method.last_complete_date });
+  if (s.view === 'assessment') Object.assign(metadata, { minimum_gdd: s.need_gdd, minimum_frost_free_days: s.need_days, precipitation_requirement_enabled: s.need_water, minimum_precip_mm: s.need_precip });
+  if (['seasonal', 'assessment'].includes(s.view)) Object.assign(metadata, { gdd_base_c: state.summary.policy.gdd.base_c, gdd_cap_c: state.summary.policy.gdd.cap_c, gdd_start: state.summary.policy.gdd.start, gdd_end: state.summary.policy.gdd.end, hdd_base_c: state.summary.policy.hdd_base_c, cold_threshold_c: state.summary.policy.cold_threshold_c, winter_months: '12;1;2', degree_day_unit: 'C_days' });
   // Frost CSV retains the full existing event contract, augmented with the selection metadata.
   let rows = state.table;
   if (s.view === 'frost') {
@@ -284,7 +352,7 @@ async function load() {
   controller?.abort(); controller = new AbortController();
   try {
     const manifest = await fetchJSON(new URL('data/manifest.json', base), controller.signal, false);
-    if (manifest.schema_version !== '1.1.0' || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('This archive does not yet include the data explorer.');
+    if (!['1.1.0', '1.2.0'].includes(manifest.schema_version) || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('This archive does not yet include the data explorer.');
     state.manifest = manifest;
     state.stations = await releaseDocument(manifest.stations_url, controller.signal);
     if (!Array.isArray(state.stations.stations) || !state.stations.stations.length) throw new Error('No stations are available.');

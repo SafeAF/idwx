@@ -35,6 +35,7 @@ class Config:
     hourly_min_coverage: int = 18
     station_windows: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     database_path: Path | None = None
+    precipitation_archives: dict[str, Path] = field(default_factory=dict)
 
 
 DEFAULT_WINDOWS = {
@@ -77,6 +78,7 @@ def load_config(path: str | Path) -> Config:
         hourly_min_coverage=int(raw.get("hourly_min_coverage", 18)),
         station_windows=raw.get("station_windows", {}),
         database_path=database_path,
+        precipitation_archives={sid: _as_repo_path(value) for sid, value in raw.get("precipitation_archives", {}).items()},
     )
 
 

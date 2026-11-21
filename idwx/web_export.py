@@ -20,11 +20,13 @@ from idwx.analytics import metric_policy, public_daily, summarize_daily
 from idwx.config import Config, StationMeta
 from idwx.frost import frost_rows, validated_daily
 from idwx.history import summarize_events
+from idwx.precipitation import attach_precipitation
 from idwx.sqlite_store import load_daily_from_sqlite
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 LEGACY_WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js")
-WEB_ASSETS = (*LEGACY_WEB_ASSETS, "explore.html", "js/analytics.js", "js/explorer.js", "js/explorer-charts.js")
+ANALYTICS_WEB_ASSETS = (*LEGACY_WEB_ASSETS, "explore.html", "js/analytics.js", "js/explorer.js", "js/explorer-charts.js")
+WEB_ASSETS = (*ANALYTICS_WEB_ASSETS, "js/growing.js")
 EVENT_NAMES = ("last_spring_frost", "first_fall_frost")
 NOTICE = (
     "Temperature-based freeze dates are a proxy for frost risk. Surface frost and crop damage "
@@ -221,7 +223,9 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
         )
         documents.append(station_history(daily, station, cfg, period, min_years))
         days = public_daily(validated_daily(daily, station.station_id))
-        analytics.append({"station_id": station.station_id, "daily": days, "summary": summarize_daily(days, metric_policy(cfg))})
+        precipitation_method = attach_precipitation(days, cfg, station.station_id, demo=demo)
+        summary = {**summarize_daily(days, metric_policy(cfg)), 'precipitation_method': precipitation_method}
+        analytics.append({"station_id": station.station_id, "daily": days, "summary": summary})
     if len(data_kinds) != 1:
         raise ValueError("All exported stations must use the same data kind")
     kind = data_kinds.pop()
@@ -244,6 +248,7 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
             **common, "station_id": sid,
             "years": [{"year": int(year), "url": f"{root}/{prefix}/daily/{year}.json"} for year in bundle["daily"]],
             "summary_url": f"{root}/{prefix}/summary.json",
+            "precipitation_method": bundle["summary"]["precipitation_method"],
         })
         files[f"{prefix}/summary.json"] = _json({**common, "station_id": sid, **bundle["summary"]})
         for year, days in bundle["daily"].items():

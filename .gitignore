@@ -14,3 +14,8 @@ node_modules/
 
 # local weather data root (outside repo by default, but ignore in case of symlink)
 historical_weather_data-1980-2022/
+
+# Local credentials
+.env
+.env.*
+!.env.example

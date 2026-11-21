@@ -2,8 +2,10 @@
 
 Status: phases 1–4 implemented locally, November 21, 2026. Temperature/frost
 exploration, monthly anomalies, and coverage-aware seasonal metrics are
-included. Precipitation remains gated on source review; production deployment
-and visual browser acceptance remain separate. See the
+included. Phase 5 is implemented for the independently audited original hourly
+archive only; refresh-period precipitation remains unavailable. A growing-year
+requirements assessment is also included. See [methods and audit](24_PRECIPITATION_GROWING_ASSESSMENT.md).
+Production deployment and visual browser acceptance remain separate. See the
 [implementation and verification record](23_DATA_EXPLORER_VERIFICATION.md).
 
 ## Goal
@@ -192,7 +194,10 @@ interaction limits justify it. Do not load chart code from a third-party CDN.
   boundaries, and precipitation-specific completeness against the source
   before publishing totals, wet-day counts, or cumulative comparisons.
   Never replace missing rain with zero. Audit daily values and at least one
-  independently checked monthly total across the archive/refresh boundary.
+  independently checked monthly total across the archive/refresh boundary
+  before enabling refresh-period amounts. The implemented archive-only scope
+  uses a separately reviewed daily supplement, with three independent monthly
+  reference totals. No refresh-boundary totals are claimed.
 - **Trends:** defer fitted slopes, significance, and climate attribution.
   A later descriptive slope must state its period, units, sample count,
   coverage exclusions, and method; it is not a forecast or causal claim.
