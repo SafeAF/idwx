@@ -19,16 +19,16 @@
     <section id="forecast" class="forecast" aria-labelledby="forecast-title">
       <div class="forecast-heading">
         <div><p class="eyebrow">Twin Falls, Idaho · Multi-model analysis</p><h1 id="forecast-title">The next two weeks,<br>source by source.</h1></div>
-        <div class="forecast-heading-copy"><p>Compare NWS, NOAA GFS/RRFS, and ECMWF IFS against IDWX’s 1980–2025 historical temperature baseline. Model spread makes disagreement visible.</p><button id="forecast-refresh" class="forecast-refresh" type="button">Refresh analysis</button></div>
+        <div class="forecast-heading-copy"><p>Compare NWS, NOAA GFS/RRFS, and ECMWF IFS temperatures, rain, total precipitation, snow, and wind against IDWX’s 1980–2025 historical temperature baseline. Model spread makes disagreement visible.</p><button id="forecast-refresh" class="forecast-refresh" type="button">Refresh analysis</button></div>
       </div>
       <div id="forecast-status" class="forecast-status" role="status" aria-live="polite">Loading current weather guidance…</div>
       <div id="forecast-content" hidden>
         <div id="weather-alerts" class="weather-alerts" aria-live="polite"></div>
-        <section id="current-weather" class="current-weather" aria-label="Current estimated conditions"></section>
+        <section id="current-weather" class="current-weather" aria-label="Current weather conditions"></section>
         <div class="forecast-key"><span><i class="source-dot nws"></i>NWS</span><span><i class="source-dot gfs"></i>NOAA GFS/RRFS</span><span><i class="source-dot ecmwf"></i>ECMWF IFS</span><span><i class="source-dot history"></i>IDWX history</span><span>Local time · °F · mph</span></div>
         <section id="forecast-analytics" class="forecast-analytics" aria-label="Forecast agreement analytics"></section>
         <section id="forecast-days" class="forecast-days" aria-label="Fourteen-day weather outlook"></section>
-        <p class="forecast-disclaimer"><strong>Forecasts change.</strong> NWS point guidance covers about seven days. GFS/RRFS and ECMWF continue through day 14 via model-specific Open-Meteo delivery. “Consensus” is a simple mean, not an endorsed forecast; spread is a disagreement signal, not calibrated uncertainty. IDWX values are calendar-day historical quantiles—not current-weather predictions. Check active NWS alerts before safety decisions.</p>
+        <p class="forecast-disclaimer"><strong>Forecasts change.</strong> NWS point guidance covers about seven days. GFS/RRFS and ECMWF continue through day 14 via model-specific Open-Meteo delivery. Model precipitation is a daily accumulation; rain includes both large-scale rain and showers, while total precipitation can also include the liquid equivalent of snow. “Consensus” is a simple mean, not an endorsed forecast; spread is a disagreement signal, not calibrated uncertainty. IDWX values are calendar-day historical quantiles—not current-weather predictions. Check active NWS alerts before safety decisions.</p>
       </div>
     </section>
     <section id="historical" class="intro historical-intro" aria-labelledby="page-title">

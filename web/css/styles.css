@@ -194,7 +194,7 @@ h1 {
 .source-dot.gfs { background:#9dc6b1; }
 .source-dot.ecmwf { background:#92b9db; }
 .source-dot.history { background:#d39a7b; }
-.forecast-analytics { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:24px; background:rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.22); }
+.forecast-analytics { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; margin-top:24px; background:rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.22); }
 .analysis-card { padding:18px; background:#244d44; }
 .analysis-label { margin-bottom:6px; color:#b9c9bf; font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
 .analysis-value { margin-bottom:4px; color:#fffdf5; font-family:Georgia,serif; font-size:1.8rem; line-height:1; }
@@ -218,7 +218,7 @@ h1 {
 .source-comparison p { margin-bottom:4px; }
 .source-name { text-transform:uppercase; letter-spacing:.07em; font-size:.62rem; font-weight:700; }
 .source-wind { color:var(--muted); }
-.source-row { display:grid; grid-template-columns:1.15fr .75fr .9fr 1fr; gap:8px; padding:8px 0; border-top:1px solid #d9ded3; align-items:start; }
+.source-row { display:grid; grid-template-columns:1.05fr .65fr 1.35fr .72fr .95fr; gap:8px; padding:8px 0; border-top:1px solid #d9ded3; align-items:start; }
 .source-row span { color:var(--muted); }
 .source-label { font-size:.72rem; }
 .history-row { border-top-style:dashed; }
@@ -226,6 +226,8 @@ h1 {
 .day-details { margin-top:12px; padding-top:10px; border-top:1px solid var(--line); font-size:.72rem; }
 .day-details summary { font-size:.7rem; }
 .day-details p { margin:9px 0 0; color:var(--muted); }
+.forecast-detail-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:12px; padding:12px; background:#f2f2ea; }
+.forecast-detail-grid .weather-metric strong { color:var(--ink); font-size:.72rem; }
 .forecast-disclaimer { max-width:920px; margin:22px 0 0; color:#cbd7cf; font-size:.73rem; }
 .forecast-disclaimer strong { color:#fffdf5; }
 .historical-intro { margin-top:34px; padding-top:44px; border-top:1px solid var(--line); }
@@ -731,6 +733,7 @@ footer {
   .forecast-analytics { grid-template-columns:1fr 1fr; }
   .analysis-card { padding:14px; }
   .source-row { grid-template-columns:1fr 1fr; gap:4px 8px; }
+  .forecast-detail-grid { grid-template-columns:1fr 1fr; }
   .weather-alert { flex-direction:column; gap:3px; }
   .intro-copy {
     max-width:100%;

@@ -6,12 +6,12 @@ import { forecastAnalytics, mergeForecast, normalizeModel, normalizeNws, normali
 function openMeteo() {
   const keys = [
     'weather_code', 'temperature_2m_max', 'temperature_2m_min', 'apparent_temperature_max',
-    'apparent_temperature_min', 'precipitation_sum', 'precipitation_probability_max', 'snowfall_sum',
+    'apparent_temperature_min', 'precipitation_sum', 'rain_sum', 'showers_sum', 'precipitation_probability_max', 'snowfall_sum',
     'wind_speed_10m_max', 'wind_gusts_10m_max', 'wind_direction_10m_dominant',
     'relative_humidity_2m_mean', 'dew_point_2m_mean', 'visibility_mean', 'uv_index_max', 'sunrise', 'sunset',
   ];
   const daily = { time: Array.from({ length: 14 }, (_, i) => `2026-11-${String(i + 13).padStart(2, '0')}`) };
-  for (const key of keys) daily[key] = Array.from({ length: 14 }, (_, i) => key === 'sunrise' || key === 'sunset' ? `${daily.time[i]}T07:00` : i + 1);
+  for (const key of keys) daily[key] = Array.from({ length: 14 }, (_, i) => key === 'sunrise' || key === 'sunset' ? `${daily.time[i]}T07:00` : key === 'showers_sum' ? 0 : i + 1);
   return { current: { time: '2026-11-13T12:00', temperature_2m: 52, apparent_temperature: 48, relative_humidity_2m: 40, precipitation: 0,
     weather_code: 2, wind_speed_10m: 12, wind_direction_10m: 180, wind_gusts_10m: 21 }, daily };
 }
@@ -58,6 +58,7 @@ test('Open-Meteo normalization keeps fourteen daily outlooks and current wind', 
   assert.equal(result.days.length, 14);
   assert.equal(result.current.wind, 12);
   assert.equal(result.days[0].high, 1);
+  assert.equal(result.days[0].rain, 1);
   assert.equal(result.days[13].date, '2026-11-26');
 });
 
@@ -93,7 +94,7 @@ test('a current NWS observation remains visible when both model feeds are unavai
   assert.equal(document.querySelector('.current-summary').textContent, 'Rain');
   assert.equal(document.querySelector('.current-meta .eyebrow').textContent, 'NWS observation · KTWF');
   assert.equal(document.querySelector('#forecast-content').hidden, false);
-  assert.match(document.querySelector('#forecast-status').textContent, /model feeds are temporarily unavailable/);
+  assert.match(document.querySelector('#forecast-status').textContent, /forecast feeds are temporarily unavailable/);
   delete global.document;
 });
 
@@ -103,6 +104,8 @@ test('merged outlook compares three live sources, history and marks days eight t
   assert.equal(result.days[0].sources[0].summary, 'Partly Sunny');
   assert.equal(result.days[0].history.sampleCount, 46);
   assert.equal(result.days[0].consensus.sourceCount, 3);
+  assert.equal(result.days[0].consensus.precipitation, 1);
+  assert.equal(result.days[0].consensus.rainRange, '1.00 in');
   assert.ok(Number.isFinite(result.days[0].consensus.highAnomaly));
   assert.equal(result.days[6].extended, false);
   assert.equal(result.days[7].extended, true);
@@ -116,7 +119,40 @@ test('analytics identify source coverage, median spread and historical anomaly',
   assert.equal(analytics.threeSourceDays, 1);
   assert.ok(analytics.medianSpread > 0);
   assert.equal(analytics.widestDay, '2026-11-13');
+  assert.ok(analytics.precipitationTotal > 0);
+  assert.equal(analytics.wettestDay, '2026-11-26');
   assert.equal(analytics.aboveHistoryDays, 0);
+});
+
+test('a malformed model is isolated while the other model still supplies fourteen days', () => {
+  const result = mergeForecast({ daily: { time: ['2026-11-13'] } }, ecmwf(), nws(), climatology());
+  assert.equal(result.days.length, 14);
+  assert.equal(result.modelCount, 1);
+  assert.match(result.sourceErrors[0], /NOAA GFS\/RRFS.*incomplete/);
+  assert.equal(result.days[0].sources.some(source => source.label === 'ECMWF IFS'), true);
+});
+
+test('NWS daily guidance remains available when both global model feeds fail', () => {
+  const result = mergeForecast(null, null, nws(), climatology());
+  assert.equal(result.days.length, 1);
+  assert.equal(result.modelCount, 0);
+  assert.equal(result.days[0].sources[0].label, 'NWS');
+  assert.equal(result.days[0].sources[0].precipitationChance, 40);
+});
+
+test('rendering preserves NWS forecast cards during a global-model outage', () => {
+  const dom = new JSDOM(`
+    <div id="forecast-status"></div><div id="forecast-content" hidden>
+      <div id="weather-alerts"></div><section id="current-weather"></section>
+      <section id="forecast-analytics"></section><section id="forecast-days"></section>
+    </div>`);
+  global.document = dom.window.document;
+  renderForecast({ gfs: null, ecmwf: null, nws: nws(), climatology: climatology(), fetchedAt: Date.parse('2026-11-16T01:00:00Z'), alerts: [],
+    errors: ['NOAA GFS/RRFS unavailable. ECMWF IFS unavailable.'] });
+  assert.equal(document.querySelectorAll('.forecast-day').length, 1);
+  assert.match(document.querySelector('.day-summary').textContent, /Partly Sunny/);
+  assert.match(document.querySelector('#forecast-status').textContent, /Partial data/);
+  delete global.document;
 });
 
 test('a model without current conditions remains a valid comparison source', () => {
@@ -126,5 +162,5 @@ test('a model without current conditions remains a valid comparison source', () 
 
 test('incomplete model data fails closed', () => {
   assert.throws(() => normalizeOpenMeteo({ current: {}, daily: { time: ['2026-11-13'] } }), /incomplete forecast/);
-  assert.throws(() => mergeForecast(null, null), /both 14-day model sources/i);
+  assert.throws(() => mergeForecast(null, null), /all daily forecast sources/i);
 });

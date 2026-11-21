@@ -14,11 +14,18 @@ stale/unavailable fallback), active NWS alerts, and a
 NWS point guidance, NOAA GFS/RRFS, and ECMWF IFS. The latter two are delivered
 through model-specific Open-Meteo requests and continue through day 14; NWS
 ends near day 7. Daily source matrices show consensus temperatures, source
-spread, precipitation and wind. IDWX calendar-day P10/P50/P90 high/low
+spread, rain, total precipitation, snow, precipitation probability, and wind.
+Expandable details add apparent temperature, humidity, dew point, visibility,
+UV and daylight where the source supplies them. Rain combines model rain and
+showers and is separate from total precipitation, which can include the liquid
+equivalent of snow. IDWX
+calendar-day P10/P50/P90 high/low
 climatology is derived from the same reviewed baseline as the historical site
 and shown separately as a historical temperature outlook, not a live model.
 Responses are cached in the browser for 15 minutes, with a bounded stale
-fallback after request failure.
+fallback after request failure. Invalid model responses are isolated instead
+of hiding valid providers, and NWS daily guidance remains visible when both
+global model feeds are unavailable.
 
 The dashboard supports a planning-year historical climatology projection,
 station/threshold/year selection, Celsius/Fahrenheit, shareable URL parameters,
