@@ -1,7 +1,10 @@
 # Web data exploration and analytics plan
 
-Status: proposed implementation plan, November 21, 2026. This document scopes
-future work; it does not change the application, publish data, or deploy a release.
+Status: phases 1–4 implemented locally, November 21, 2026. Temperature/frost
+exploration, monthly anomalies, and coverage-aware seasonal metrics are
+included. Precipitation remains gated on source review; production deployment
+and visual browser acceptance remain separate. See the
+[implementation and verification record](23_DATA_EXPLORER_VERIFICATION.md).
 
 ## Goal
 
@@ -112,7 +115,7 @@ public JSON/CSV; serve no raw hourly files, database, private paths, model
 artifacts, or general query endpoint. No API server or browser SQL engine is
 needed for the initial single-station daily dataset.
 
-Proposed additions inside the existing `data/<release-id>/` tree:
+Implemented additions inside the existing `data/<release-id>/` tree:
 
 | File | Purpose |
 | --- | --- |
@@ -212,8 +215,7 @@ the current static hosting/cache design can be reused.
 ## Verification and acceptance
 
 Use the existing Python and Node test suites, adding meaningful cases for the
-new behavior. No application tests are required for this planning-only edit.
-Implementation acceptance requires:
+new behavior. Implementation acceptance requires:
 
 - Known fixture results for filtering, statistics, quantiles, unit conversion,
   missingness, threshold equality, leap days, and seasonal boundaries. Absolute

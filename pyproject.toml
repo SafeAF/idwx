@@ -32,6 +32,11 @@ packages = ["idwx"]
 "web/js/forecast.js" = "idwx/web_assets/js/forecast.js"
 "web/js/format.js" = "idwx/web_assets/js/format.js"
 
+"web/explore.html" = "idwx/web_assets/explore.html"
+"web/js/analytics.js" = "idwx/web_assets/js/analytics.js"
+"web/js/explorer.js" = "idwx/web_assets/js/explorer.js"
+"web/js/explorer-charts.js" = "idwx/web_assets/js/explorer-charts.js"
+
 [dependency-groups]
 dev = [
   "pytest>=8.0",

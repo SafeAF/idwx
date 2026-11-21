@@ -13,8 +13,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from zoneinfo import ZoneInfo
 
+from idwx.analytics import summarize_daily, validate_daily, validate_policy
 from idwx.history import summarize_events
-from idwx.web_export import EVENT_NAMES, SCHEMA_VERSION, WEB_ASSETS
+from idwx.web_export import EVENT_NAMES, LEGACY_WEB_ASSETS, SCHEMA_VERSION, WEB_ASSETS
 
 COMMON = {"schema_version", "release_id", "data_kind", "methodology"}
 STATION_FIELDS = {"station", "source_coverage", "season_years", "windows", "thresholds_c", "annual", "summaries", "temperature_climatology"}
@@ -81,8 +82,8 @@ def _release_path(root: Path, name: str, release: str) -> Path:
 
 def _inventory(root: Path) -> list[Path]:
     files = []
-    file_pattern = rf"data/{RELEASE_ID}/(?:stations\.json|stations/{STATION_ID}\.json|downloads/frost-history\.csv)"
-    directory_pattern = rf"(?:css|js|data|data/{RELEASE_ID}(?:/(?:stations|downloads))?)"
+    file_pattern = rf"data/{RELEASE_ID}/(?:stations\.json|stations/{STATION_ID}\.json|downloads/frost-history\.csv|analytics/{STATION_ID}/(?:index\.json|summary\.json|daily/\d{{4}}\.json))"
+    directory_pattern = rf"(?:css|js|data|data/{RELEASE_ID}(?:/(?:stations|downloads|analytics(?:/{STATION_ID}(?:/daily)?)?))?)"
     for path in root.rglob("*"):
         name = path.relative_to(root).as_posix()
         _require(not path.is_symlink(), f"Publication contains a symlink: {name}")
@@ -92,7 +93,7 @@ def _inventory(root: Path) -> list[Path]:
             _require(path.is_file() and (name in WEB_ASSETS or name == "data/manifest.json" or re.fullmatch(file_pattern, name)),
                      f"Unexpected/private publication file: {name}")
             files.append(path)
-    for asset in (*WEB_ASSETS, "data/manifest.json"):
+    for asset in (*LEGACY_WEB_ASSETS, "data/manifest.json"):
         _require((root / asset).is_file(), f"Missing publication asset: {asset}")
     return files
 
@@ -129,7 +130,8 @@ def _event(event: dict, year: int, threshold: float, window: dict) -> None:
 
 
 def _station(document: dict, manifest: dict, expected_station: dict) -> None:
-    _keys(document, COMMON | STATION_FIELDS, "station document")
+    extra = {"analytics_url"} if manifest["schema_version"] == SCHEMA_VERSION else set()
+    _keys(document, COMMON | STATION_FIELDS | extra, "station document")
     _common(document, manifest)
     station = document["station"]
     _keys(station, {"station_id", "name", "lat", "lon", "elevation_m", "source", "timezone"}, "station metadata")
@@ -228,6 +230,43 @@ def _station(document: dict, manifest: dict, expected_station: dict) -> None:
             _require(distribution == summarize_events(records, a, b, minimum), "Historical summary disagrees with annual records")
 
 
+def _analytics(root: Path, station: dict, manifest: dict) -> tuple[dict, set]:
+    release, sid = manifest["release_id"], station["station"]["station_id"]
+    prefix = f"data/{release}/analytics/{sid}"
+    _require(station["analytics_url"] == f"{prefix}/index.json", "Invalid analytics URL")
+    names = {station["analytics_url"], f"{prefix}/summary.json"}
+    index = _read_json(_release_path(root, station["analytics_url"], release))
+    _keys(index, COMMON | {"station_id", "years", "summary_url"}, "analytics index")
+    _common(index, manifest)
+    _require(index["station_id"] == sid and index["summary_url"] == f"{prefix}/summary.json", "Analytics station mismatch")
+    first = int(station["source_coverage"]["first_date"][:4])
+    last = int(station["source_coverage"]["last_date"][:4])
+    _require(isinstance(index["years"], list) and len(index["years"]) == last - first + 1, "Incomplete analytics years")
+    daily = {}
+    for year, entry in zip(range(first, last + 1), index["years"]):
+        _keys(entry, {"year", "url"}, "analytics year")
+        _require(type(entry["year"]) is int and entry["year"] == year and entry["url"] == f"{prefix}/daily/{year}.json", "Invalid analytics year URL")
+        names.add(entry["url"])
+        chunk = _read_json(_release_path(root, entry["url"], release))
+        _keys(chunk, COMMON | {"station_id", "year", "days"}, "daily analytics")
+        _common(chunk, manifest)
+        _require(chunk["station_id"] == sid and type(chunk["year"]) is int and chunk["year"] == year, "Daily analytics station/year mismatch")
+        validate_daily(year, chunk["days"])
+        daily[str(year)] = chunk["days"]
+    summary = _read_json(_release_path(root, index["summary_url"], release))
+    _keys(summary, COMMON | {"station_id", "months", "years", "policy", "seasons"}, "analytics summary")
+    _common(summary, manifest)
+    validate_policy(summary["policy"])
+    expected = summarize_daily(daily, summary["policy"])
+    _require(summary["station_id"] == sid and summary["months"] == expected["months"] and summary["years"] == expected["years"] and summary["seasons"] == expected["seasons"], "Analytics summary disagrees with daily records")
+    recorded = [r for rows in daily.values() for r in rows if r["status"] != "missing_record"]
+    coverage = station["source_coverage"]
+    minima = [r for r in recorded if r["tmin_c"] is not None]
+    _require(len(recorded) == coverage["recorded_days"] and recorded[0]["date"] == coverage["first_date"]
+             and recorded[-1]["date"] == coverage["last_date"] and len(minima) == coverage["valid_minimum_days"], "Analytics source coverage mismatch")
+    return {"station_id": sid, "daily": daily, "summary": expected}, names
+
+
 def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dict | None = None) -> dict:
     root = directory.resolve()
     _require(root.is_dir(), "Publication directory does not exist")
@@ -235,7 +274,7 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     manifest = supplied_manifest if supplied_manifest is not None else _read_json(root / "data/manifest.json")
     _keys(manifest, COMMON | {"generated_at_utc", "stations_url", "history_csv_url", "source_coverage", "files"}, "manifest")
     release = manifest["release_id"]
-    _require(manifest["schema_version"] == SCHEMA_VERSION and isinstance(release, str) and re.fullmatch(RELEASE_ID, release), "Unsupported schema or release ID")
+    _require(manifest["schema_version"] in {"1.0.0", SCHEMA_VERSION} and isinstance(release, str) and re.fullmatch(RELEASE_ID, release), "Unsupported schema or release ID")
     _require(manifest["data_kind"] in {
         "synthetic_demo", "historical_observations", "historical_reanalysis",
     }, "Unsupported data kind")
@@ -255,6 +294,9 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     _common(index, manifest)
     _require(isinstance(index["stations"], list) and index["stations"], "No stations in release")
     documents, ids, expected_files, rows = [], set(), {manifest["stations_url"], manifest["history_csv_url"]}, []
+    analytics = []
+    if manifest["schema_version"] == SCHEMA_VERSION:
+        _require(all((root / name).is_file() for name in WEB_ASSETS), "Missing explorer asset")
     for entry in index["stations"]:
         _keys(entry, {"station", "source_coverage", "url"}, "station index entry")
         sid = entry["station"]["station_id"]
@@ -265,7 +307,11 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
         document = _read_json(_release_path(root, entry["url"], release))
         _station(document, manifest, entry["station"])
         _require(entry["source_coverage"] == document["source_coverage"], "Index source coverage mismatch")
-        documents.append({key: value for key, value in document.items() if key not in COMMON})
+        if manifest["schema_version"] == SCHEMA_VERSION:
+            bundle, names = _analytics(root, document, manifest)
+            analytics.append(bundle)
+            expected_files.update(names)
+        documents.append({key: value for key, value in document.items() if key not in COMMON | {"analytics_url"}})
         for record in document["annual"]:
             row = {key: manifest[key] for key in ("schema_version", "release_id", "data_kind")}
             row.update(station_id=sid, season_year=record["season_year"], threshold_c=record["threshold_c"])
@@ -283,6 +329,8 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     _require(manifest["source_coverage"] == expected_coverage, "Manifest source coverage mismatch")
     identity = {key: manifest[key] for key in ("schema_version", "data_kind", "methodology")}
     identity["stations"] = documents
+    if manifest["schema_version"] == SCHEMA_VERSION:
+        identity["analytics"] = analytics
     content = (json.dumps(identity, allow_nan=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     _require(hashlib.sha256(content).hexdigest() == release, "Release ID disagrees with canonical content")
     projection_included = (
@@ -296,6 +344,7 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
             and b"api.weather.gov" in (root / "js/forecast.js").read_bytes()
             and b"gfs_seamless" in (root / "js/forecast.js").read_bytes()
             and b"ecmwf_ifs025" in (root / "js/forecast.js").read_bytes(),
+            "data_explorer_included": manifest["schema_version"] == SCHEMA_VERSION,
             "temperature_climatology_included": all("temperature_climatology" in document for document in documents)}
 
 

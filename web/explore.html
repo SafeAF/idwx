@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explore temperature & frost history · IDWX</title>
+  <meta name="description" content="Explore Twin Falls historical temperatures, compare years, and analyze freeze dates with coverage-aware data downloads.">
+  <link rel="stylesheet" href="css/styles.css"><script type="module" src="js/explorer.js"></script>
+</head>
+<body class="explorer-page">
+  <a class="skip-link" href="#explorer">Skip to the explorer</a>
+  <header class="site-header wrap"><a class="brand" href="./">IDWX <span class="brand-divider">/</span> Twin Falls Weather</a><a href="./#historical" class="header-link">Weather & frost almanac</a></header>
+  <main id="explorer" class="wrap" tabindex="-1">
+    <section class="explorer-intro"><p class="eyebrow">The historical record</p><h1>Explore the seasons.</h1><p>Follow daily temperatures, compare years, and investigate freeze dates. Every view includes its coverage and the values behind it.</p></section>
+    <div id="explorer-status" class="status" role="status" aria-live="polite">Loading the archive…</div>
+    <button id="explorer-retry" class="button" hidden>Retry this selection</button>
+    <p id="explorer-notice" class="notice" hidden></p>
+    <form id="explorer-filters" class="explorer-filters panel" aria-label="Explore the archive">
+      <label>Station<select id="ex-station" disabled></select></label>
+      <label>View<select id="ex-view"><option value="temperature">Temperature timeline</option><option value="compare">Compare years</option><option value="frost">Frost history</option><option value="heatmap">Monthly anomalies</option><option value="seasonal">Growing season & winter</option><option value="table">Daily data table</option></select></label>
+      <label>From local date<input id="ex-start" type="date" required></label><label>Through local date<input id="ex-end" type="date" required></label>
+      <label>Temperature series<select id="ex-metric"><option value="tmean_c">Daily mean</option><option value="tmin_c">Daily minimum</option><option value="tmax_c">Daily maximum</option></select></label>
+      <label>Display units<select id="ex-unit"><option value="c">Celsius</option><option value="f">Fahrenheit</option></select></label>
+      <label id="compare-control" hidden>Compare up to three years<input id="ex-compare" placeholder="2023,2024,2025" aria-describedby="compare-help"><span id="compare-help" class="small muted">Comma-separated years; compares full calendars.</span></label>
+      <label id="threshold-control" hidden>Freeze threshold<select id="ex-threshold"></select></label>
+      <label class="check-label"><input id="ex-baseline" type="checkbox" checked> Show historical P10–P90 and median</label>
+      <div class="explorer-actions"><button class="button" type="submit">Apply filters</button><button class="button" type="button" id="ex-reset">Reset</button></div>
+    </form>
+    <div id="explorer-results" hidden>
+      <p id="ex-provenance" class="small muted"></p>
+      <section id="ex-statistics" class="explorer-stats" aria-label="Selection statistics"></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow" id="ex-period"></p><h2 id="ex-title"></h2></div><button id="ex-download" class="button" type="button">Download selected data</button></div>
+        <p id="ex-description" class="muted"></p><p id="ex-legend" class="explorer-legend"></p>
+        <div id="ex-chart" class="chart explorer-chart" tabindex="0" role="region" aria-label="Interactive chart. Use left and right arrow keys to inspect values."></div>
+        <p id="ex-inspection" class="chart-inspection" aria-live="polite">Select a chart position or use the arrow keys to inspect values.</p>
+        <div id="ex-extra"></div>
+      </section>
+      <section class="panel" aria-labelledby="ex-table-title"><h2 id="ex-table-title">Values behind this view</h2><p id="ex-table-note" class="small muted"></p>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Selected data table"><table><caption id="ex-table-caption"></caption><thead id="ex-table-head"></thead><tbody id="ex-table-body"></tbody></table></div>
+        <div class="explorer-pagination"><button id="ex-previous" class="button">Previous rows</button><span id="ex-page" role="status"></span><button id="ex-next" class="button">Next rows</button></div>
+      </section>
+      <section class="methodology"><div><p class="eyebrow">Read the record carefully</p><h2>Context for every comparison.</h2></div><div class="method-copy"><p>ERA5/Oikolab is historical reanalysis at the Twin Falls coordinate, not a physical observing station. It is separate from KTWF observations and live forecast guidance on the homepage.</p><p>Daily gaps stay missing. Partial periods are labeled and excluded from full-period aggregates. Historical P10–P90 describes the archive; it is not a forecast interval. Freeze-date distributions include confirmed events only; no-event and incomplete seasons are counted separately.</p><p id="ex-method"></p></div></section>
+    </div>
+    <noscript><p class="notice">JavaScript is required for the interactive explorer. The homepage provides a link to the published annual frost CSV.</p></noscript>
+  </main><footer class="wrap">IDWX / Twin Falls historical data explorer</footer>
+</body>
+</html>

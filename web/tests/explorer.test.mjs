@@ -1,0 +1,177 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFile, readdir } from 'node:fs/promises';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import vm from 'node:vm';
+import { after, test } from 'node:test';
+import { JSDOM, VirtualConsole } from 'jsdom';
+
+const root = fileURLToPath(new URL('../../', import.meta.url));
+mkdirSync(path.join(root, '.tmp'), { recursive: true });
+const fixture = mkdtempSync(path.join(root, '.tmp', 'explorer-tests-'));
+const python = process.env.IDWX_PYTHON || path.join(root, '.venv/bin/python');
+execFileSync(python, ['-c', `
+from pathlib import Path
+from dataclasses import replace
+import sys
+from idwx.config import load_config,StationMeta
+from idwx.web_export import export_web_data
+export_web_data(replace(load_config('configs/idaho.yml'),backtest={'start_year':2000,'end_year':2022}),[StationMeta('demo','Demo')],Path(sys.argv[1]),demo=True)
+`, fixture], { cwd: root });
+after(() => rmSync(fixture, { recursive: true }));
+const files = new Map();
+async function inventory(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) await inventory(target);
+    else files.set('/almanac/' + path.relative(fixture, target).split(path.sep).join('/'), await readFile(target, 'utf8'));
+  }
+}
+await inventory(fixture);
+const html = await readFile(path.join(root, 'web/explore.html'), 'utf8');
+const manifest = JSON.parse(files.get('/almanac/data/manifest.json'));
+const settle = async predicate => {
+  const limit = Date.now() + 10000;
+  while (!predicate()) { if (Date.now() > limit) throw new Error('Explorer did not settle'); await new Promise(resolve => setImmediate(resolve)); }
+};
+async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route } = {}) {
+  const errors = [], requests = [], downloads = [], blobs = new Map(), console = new VirtualConsole();
+  console.on('jsdomError', error => errors.push(error));
+  const dom = new JSDOM(html, { url: 'https://idwx.test/almanac/explore.html' + query, runScripts: 'outside-only', virtualConsole: console });
+  t.after(() => { dom.window.close(); assert.deepEqual(errors, []); });
+  const { window } = dom;
+  window.Blob = Blob;
+  window.URL.createObjectURL = blob => { const key = 'blob:test-' + blobs.size; blobs.set(key, blob); return key; };
+  window.URL.revokeObjectURL = () => {};
+  window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.href); };
+  window.fetch = async (url, options) => {
+    const parsed = new URL(url); requests.push(parsed.pathname);
+    const response = route && await route(parsed, options); if (response) return response;
+    return { ok: files.has(parsed.pathname), status: files.has(parsed.pathname) ? 200 : 404, json: async () => JSON.parse(files.get(parsed.pathname)) };
+  };
+  const context = dom.getInternalVMContext(), modules = new Map();
+  function moduleFor(url) {
+    if (!modules.has(url.href)) modules.set(url.href, readFile(url, 'utf8').then(source => new vm.SourceTextModule(source, { context, identifier: url.href })));
+    return modules.get(url.href);
+  }
+  const app = await moduleFor(pathToFileURL(path.join(root, 'web/js/explorer.js')));
+  await app.link((specifier, reference) => moduleFor(new URL(specifier, reference.identifier)));
+  await app.evaluate();
+  const $ = id => window.document.getElementById(id);
+  await settle(() => !$('explorer-results').hidden || !$('explorer-retry').hidden);
+  const apply = async values => {
+    for (const [key, value] of Object.entries(values)) $('ex-' + key).value = value;
+    $('explorer-filters').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await settle(() => !$('explorer-results').hidden || !$('explorer-retry').hidden);
+  };
+  return { window, $, apply, requests, downloads, blobs };
+}
+
+test('daily explorer restores URL, only loads selected chunks and exports identical daily selection', async t => {
+  const { $, requests, blobs } = await explorer(t, { query: '?start=2020-02-28&end=2020-03-01&unit=f' });
+  assert.equal($('explorer-results').hidden, false, $('explorer-status').textContent);
+  assert.equal($('ex-unit').value, 'f'); assert.equal($('ex-table-body').children.length, 3);
+  assert.match($('ex-table-body').textContent, /2020-02-29/);
+  assert.match($('explorer-notice').textContent, /Synthetic/);
+  assert.deepEqual(requests.filter(r => r.includes('/daily/')).map(r => r.split('/').at(-1)), ['2020.json']);
+  assert.ok(requests.every(r => r.startsWith('/almanac/data/')));
+  $('ex-download').click(); const text = await [...blobs.values()][0].text();
+  assert.equal(text.split('\r\n').filter(Boolean).length, 4);
+  assert.match(text, new RegExp(manifest.release_id)); assert.match(text, /"2020-02-29"/);
+  assert.match(text, /"display_unit"/);
+});
+
+test('comparison uses full selected years, shared month/day axis, URL history, and units', async t => {
+  const { $, apply, window, blobs } = await explorer(t);
+  await apply({ view: 'compare', compare: '2020,2021,2020,9999', unit: 'f' });
+  assert.equal($('ex-compare').value, '2020,2021'); assert.equal($('ex-start').disabled, true);
+  assert.match($('ex-page').textContent, /731 rows/); assert.match($('ex-legend').textContent, /2021 \(dashed\)/);
+  assert.match(window.location.search, /view=compare/);
+  $('ex-download').click();
+  const exported = await [...blobs.values()][0].text();
+  assert.match(exported, /"compare","","","2020;2021"/);
+  assert.match(exported, /full_comparison_years/);
+  window.history.back();
+  await settle(() => $('ex-view').value === 'temperature' && !$('explorer-results').hidden);
+  assert.equal($('ex-unit').value, 'c');
+});
+
+test('frost status counts, verified intervals, and event distributions respect selected years', async t => {
+  const { $, apply, blobs } = await explorer(t);
+  await apply({ view: 'frost', start: '2019-01-01', end: '2021-12-31', threshold: '0' });
+  assert.equal($('ex-table-body').children.length, 3);
+  assert.match($('ex-statistics').textContent, /No event in complete window: 1/);
+  assert.match($('ex-table-body').textContent, /Incomplete window/);
+  assert.match($('ex-extra').textContent, /Spring event-date distribution/);
+  $('ex-download').click(); const text = await [...blobs.values()][0].text();
+  assert.match(text, /candidate_date/); assert.match(text, /coverage_fraction/);
+  assert.equal(text.split('\r\n').filter(Boolean).length, 4);
+});
+
+test('monthly anomalies expose complete paired counts and drill down to the selected month', async t => {
+  const { $, apply, window } = await explorer(t);
+  await apply({ view: 'heatmap', start: '2020-01-01', end: '2020-12-31' });
+  assert.equal($('ex-chart').querySelectorAll('button').length, 12);
+  assert.equal($('ex-table-body').children.length, 12);
+  const feb = $('ex-chart').querySelectorAll('button')[1]; assert.match(feb.title, /29\/29/); feb.click();
+  await settle(() => $('ex-view').value === 'temperature' && !$('explorer-results').hidden);
+  assert.equal($('ex-start').value, '2020-02-01'); assert.equal($('ex-end').value, '2020-02-29');
+  $('ex-chart').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  assert.match($('ex-inspection').textContent, /2020-02-02/);
+});
+
+test('failed year chunks show an error and retry preserves the requested selection', async t => {
+  let fail = true;
+  const { $, requests } = await explorer(t, { query: '?start=2020-02-01&end=2020-02-29', route: parsed => {
+    if (parsed.pathname.endsWith('/daily/2020.json') && fail) { fail = false; return { ok: false, status: 503 }; }
+  } });
+  assert.equal($('explorer-results').hidden, true); assert.match($('explorer-status').textContent, /503/);
+  $('explorer-retry').click(); await settle(() => !$('explorer-results').hidden);
+  assert.equal($('ex-start').value, '2020-02-01'); assert.equal($('ex-table-body').children.length, 29);
+  assert.equal(requests.filter(r => r.endsWith('/daily/2020.json')).length, 2);
+});
+
+test('seasonal totals cannot present a partially selected growing window as complete', async t => {
+  const { $, apply, blobs } = await explorer(t);
+  await apply({ view: 'seasonal', start: '2020-04-01', end: '2020-04-02' });
+  const cells = [...$('ex-table-body').querySelectorAll('td')].map(n => n.textContent);
+  assert.equal(cells[1], '—'); assert.equal(cells[3], '2020-04-02'); assert.equal(cells[5], '214');
+  assert.match($('ex-description').textContent, /December–February/);
+  $('ex-download').click();
+  const exported = await [...blobs.values()][0].text();
+  assert.match(exported, /gdd_base_c/); assert.match(exported, /C_days/);
+});
+
+test('a mixed-release response is rejected and not retained in the retry cache', async t => {
+  let corrupt = true;
+  const { $, requests } = await explorer(t, { route: parsed => {
+    if (corrupt && parsed.pathname.endsWith('/daily/2020.json')) {
+      corrupt = false;
+      const doc = JSON.parse(files.get(parsed.pathname)); doc.release_id = 'f'.repeat(64);
+      return { ok: true, json: async () => doc };
+    }
+  } });
+  assert.equal($('explorer-results').hidden, true); assert.match($('explorer-status').textContent, /mixed release/);
+  $('explorer-retry').click(); await settle(() => !$('explorer-results').hidden);
+  assert.equal(requests.filter(p => p.endsWith('/daily/2020.json')).length, 2);
+});
+
+test('late data cannot overwrite a newer selection and incomplete long periods stay unavailable', async t => {
+  let releaseSlow;
+  const { $, apply, window } = await explorer(t, { route: async parsed => {
+    if (parsed.pathname.endsWith('/daily/2018.json')) await new Promise(resolve => { releaseSlow = resolve; });
+  } });
+  $('ex-start').value = '2018-01-01'; $('ex-end').value = '2018-12-31';
+  $('explorer-filters').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await settle(() => !!releaseSlow);
+  await apply({ start: '2020-01-01', end: '2020-12-31' });
+  releaseSlow(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal($('ex-start').value, '2020-01-01'); assert.match($('explorer-status').textContent, /2020-12-31/);
+  await apply({ start: '2019-01-01', end: '2022-12-31' });
+  assert.equal($('ex-table-body').children.length, 48);
+  assert.match($('ex-table-note').textContent, /complete-period means/);
+  const june2021 = [...$('ex-table-body').children].find(tr => tr.firstChild.textContent === '2021-06');
+  assert.equal(june2021.children[1].textContent, '—');
+});

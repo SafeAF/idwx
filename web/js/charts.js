@@ -10,7 +10,7 @@ function element(tag, attributes = {}, text) {
   return node;
 }
 
-export function renderHistory(container, records, summaries, selectedYear) {
+export function renderHistory(container, records, summaries, selectedYear, options = {}) {
   container.replaceChildren();
   const observed = records.filter(r => r.last_spring_frost.status === 'observed' || r.first_fall_frost.status === 'observed');
   if (!observed.length) {
@@ -47,12 +47,30 @@ export function renderHistory(container, records, summaries, selectedYear) {
   const step = Math.max(1, Math.ceil((last - first) / 6));
   for (let year = first + step; year < last - step / 2; year += step) years.add(year);
   for (const year of years) svg.append(element('text', { x: x(year), y: height - 10, 'text-anchor': 'middle' }, year));
+  const inspection = [];
   for (const record of observed) for (const [name, color] of Object.entries(COLORS)) {
     const event = record[name];
     if (event.status !== 'observed' || !event.date) continue;
-    const dot = element('circle', { cx: x(record.season_year), cy: y(calendarDay(event.date)), r: record.season_year === selectedYear ? 5.5 : 3.8, fill: color, stroke: '#fffef9', 'stroke-width': 1.5 });
+    const dot = options.symbols && name === 'first_fall_frost'
+      ? element('path', { d: `M${x(record.season_year)},${y(calendarDay(event.date)) - 5} l5,5 l-5,5 l-5,-5 Z`, fill: color })
+      : element('circle', { cx: x(record.season_year), cy: y(calendarDay(event.date)), r: record.season_year === selectedYear ? 5.5 : 3.8, fill: color, stroke: '#fffef9', 'stroke-width': 1.5 });
     dot.append(element('title', {}, `${record.season_year} ${name === 'last_spring_frost' ? 'spring' : 'fall'}: ${displayDate(event.date, true)}`));
+    if (options.inspect) {
+      const text = `${record.season_year} ${name === 'last_spring_frost' ? 'spring' : 'fall'}: ${displayDate(event.date, true)} · ${event.tmin_c} °C`;
+      dot.onclick = dot.onpointerenter = () => options.inspect(text);
+      inspection.push(text);
+    }
     svg.append(dot);
+  }
+  if (options.inspect && inspection.length) {
+    let index = -1;
+    container.onkeydown = event => {
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        index = event.key === 'Home' ? 0 : event.key === 'End' ? inspection.length - 1 : Math.max(0, Math.min(inspection.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)));
+        options.inspect(inspection[index]);
+      }
+    };
   }
   container.append(svg);
 }

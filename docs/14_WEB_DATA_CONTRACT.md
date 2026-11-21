@@ -1,4 +1,4 @@
-# Static historical data contract, version 1.0.0
+# Static historical data contract, version 1.1.0
 
 This implements historical summaries from Phase 2 and the export contract of
 Phase 3 in `12_FROST_STATIC_WEBSITE_PLAN.md`. It does not publish model
@@ -68,7 +68,7 @@ manifest once, then keep its release references for the lifetime of a view.
 Load the index and selected station only. Fetch a newer manifest to start a
 new release view; do not combine files across releases.
 
-Station IDs must be unique lowercase snake_case identifiers. Raw observations,
+Station IDs must be unique lowercase snake_case identifiers. Raw hourly observations,
 private filesystem paths, feature tables, and model files are not exported.
 CSV uses UTF-8, a header row, and blank cells for missing values. JSON uses
 finite numbers and `null`; dates are ISO date-only strings (`YYYY-MM-DD`).
@@ -206,7 +206,7 @@ has a bounded-content regression and is exercised by the real export in CI.
 ## Independent publication verification and portable delivery
 
 Run `uv run idwx verify-web PUBLICATION_DIRECTORY` before activation. This
-read-only check accepts schema 1.0.0, verifies the active and every retained
+read-only check accepts schemas 1.0.0 and 1.1.0, verifies the active and every retained
 release, canonical content identity, checksums, path/file/field allowlists,
 finite JSON values, event and interval consistency, recalculated historical
 summaries, and CSV/JSON agreement. Unexpected files or directories, private
@@ -236,3 +236,77 @@ identical input bytes produce identical archive bytes. Export timestamps can
 change between exports even when the data release ID is unchanged. Choose
 an archive destination outside the publication root. For demo delivery only,
 add `--allow-demo` to both commands. Never deploy the repository as a site.
+
+## Historical explorer extension (1.1.0)
+
+New exports include `explore.html`, `js/analytics.js`, `js/explorer.js`, and
+`js/explorer-charts.js`. The homepage still loads no daily history. The explorer
+uses the same manifest and release identity, and fetches only the chosen
+station and selected years. It needs no weather-provider requests.
+
+A station document adds `analytics_url`, pointing to
+`data/<release-id>/analytics/<station-id>/index.json`. Like existing URLs,
+resolve it against the publication root. The index carries the common fields,
+`station_id`, ordered `years` entries (`year`, publication-relative `url`),
+and `summary_url`. The years cover every source calendar year, including
+partial boundary years and completely missing intervening years.
+
+Each `daily/<year>.json` has common fields, `station_id`, `year`, and `days`:
+
+| Daily row field | Contract |
+| --- | --- |
+| `date` | Local ISO calendar date; full ordered 365/366-day calendar without duplicates. |
+| `tmin_c`, `tmax_c`, `tmean_c` | Finite Celsius or null; derived daily values, never raw hourly source records. |
+| `status` | `valid` when all three values exist; `invalid_temperature` for a recorded day with any unavailable temperature; `missing_record` for an absent source date. |
+| `n_obs` | Nonnegative source-hour count where available, otherwise null. It is not an independent completeness guarantee. |
+
+An insufficient-coverage flag masks all temperatures. Other recorded days
+retain individual finite fields even when one field is missing. Statistics
+count valid values separately per metric. Missing calendar rows carry only
+null values and a `missing_record` status, including outside the source span
+in boundary years. Internal quality-flag text and private source metadata are
+not published. Precipitation remains excluded pending its separate review.
+
+`summary.json` includes common fields, `station_id`, `months`, `years`,
+`policy`, and `seasons`. Monthly/yearly temperature records include the period,
+`expected_days`, per-field `valid_days`/`mean`/`min`/`max`, and `complete`.
+Means describe available values; incomplete periods cannot provide complete
+period means in long-range charts or rankings. No values means null statistics.
+
+The policy records the configured GDD base/cap/start/end, winter HDD base,
+and cold-day threshold in Celsius. Public winter metrics use December–February,
+assigned to the ending year; a configuration with different winter months is
+rejected for this export. Seasonal records contain final `gdd`, a continuous
+`gdd_subtotal` and `through` date, GDD valid/expected counts, winter `hdd`,
+`cold_days`, `cold_run`, and winter valid/expected counts. Final totals and cold
+runs require full metric coverage. The continuous GDD subtotal stops before
+its first missing day. These calculations are separate from research targets.
+
+The existing `temperature_climatology` station field contains a fixed
+`baseline_period`, explanatory `method`, and calendar-day `days`. Each day has
+`month_day`, `sample_count`, and `low_c`/`mean_c`/`high_c` P10/P50/P90 objects.
+It uses paired valid temperatures, a minimum of five samples per month/day,
+and linearly interpolated quantiles. It differs from the nearest-rank frost
+quantiles. Explorer anomalies are departures from this historical median;
+whole-month anomaly values require every selected calendar day and reference.
+
+All analytics files are checksummed. The 1.1.0 content identity hashes the
+existing common identity and station contents (excluding the derived
+`analytics_url`), plus an `analytics` array in station order. Each bundle has
+`station_id`, a year-string-to-daily-rows `daily` mapping, and `summary` without
+common identity fields. Release-specific URLs and timestamps are derived
+after hashing. The verifier rebuilds this identity, validates daily calendars
+and source counts, and recomputes monthly/annual/seasonal summaries.
+
+Version 1.0.0 releases retain their original identity and field contract.
+Both versions may be active or retained together; old bytes are never
+rewritten. The older release supports the existing homepage, while the new
+explorer requires 1.1.0 data and shows an explicit error on an older manifest.
+
+Browser CSVs include release/schema/data kind, station, actual applied filters,
+reference baseline, selected display unit, and canonical Celsius values.
+Daily downloads include display values; frost downloads retain all annual
+coverage/candidate fields. Long-range temperature downloads match their
+monthly/yearly table; the daily table view exports individual dates. Comparison
+mode uses full selected calendar years. Frost mode uses full seasonal windows
+for the inclusive selected years. Other views use inclusive local dates.

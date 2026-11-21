@@ -16,13 +16,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from idwx.analytics import metric_policy, public_daily, summarize_daily
 from idwx.config import Config, StationMeta
 from idwx.frost import frost_rows, validated_daily
 from idwx.history import summarize_events
 from idwx.sqlite_store import load_daily_from_sqlite
 
-SCHEMA_VERSION = "1.0.0"
-WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js")
+SCHEMA_VERSION = "1.1.0"
+LEGACY_WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js")
+WEB_ASSETS = (*LEGACY_WEB_ASSETS, "explore.html", "js/analytics.js", "js/explorer.js", "js/explorer-charts.js")
 EVENT_NAMES = ("last_spring_frost", "first_fall_frost")
 NOTICE = (
     "Temperature-based freeze dates are a proxy for frost risk. Surface frost and crop damage "
@@ -198,6 +200,7 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
     if len(set(cfg.frost_thresholds_c)) != len(cfg.frost_thresholds_c):
         raise ValueError("Frost thresholds must be unique")
     documents = []
+    analytics = []
     data_kinds = set()
     for station in sorted(stations, key=lambda s: s.station_id):
         if demo:
@@ -217,11 +220,13 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
             max(int(cfg.backtest.get("end_year", years.max())), latest_complete_year),
         )
         documents.append(station_history(daily, station, cfg, period, min_years))
+        days = public_daily(validated_daily(daily, station.station_id))
+        analytics.append({"station_id": station.station_id, "daily": days, "summary": summarize_daily(days, metric_policy(cfg))})
     if len(data_kinds) != 1:
         raise ValueError("All exported stations must use the same data kind")
     kind = data_kinds.pop()
     common = {"schema_version": SCHEMA_VERSION, "data_kind": kind, "methodology": NOTICE}
-    identity = hashlib.sha256(_json({**common, "stations": documents})).hexdigest()
+    identity = hashlib.sha256(_json({**common, "stations": documents, "analytics": analytics})).hexdigest()
     release_id = identity  # Full content hash avoids mutable release paths.
     common = {**common, "release_id": release_id}
     root = f"data/{release_id}"
@@ -230,8 +235,19 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
     files = {
         "stations.json": _json({**common, "stations": index}),
         "downloads/frost-history.csv": _csv(documents, common),
-        **{f"stations/{d['station']['station_id']}.json": _json({**common, **d}) for d in documents},
+        **{f"stations/{d['station']['station_id']}.json": _json({**common, **d, "analytics_url": f"{root}/analytics/{d['station']['station_id']}/index.json"}) for d in documents},
     }
+    for bundle in analytics:
+        sid = bundle["station_id"]
+        prefix = f"analytics/{sid}"
+        files[f"{prefix}/index.json"] = _json({
+            **common, "station_id": sid,
+            "years": [{"year": int(year), "url": f"{root}/{prefix}/daily/{year}.json"} for year in bundle["daily"]],
+            "summary_url": f"{root}/{prefix}/summary.json",
+        })
+        files[f"{prefix}/summary.json"] = _json({**common, "station_id": sid, **bundle["summary"]})
+        for year, days in bundle["daily"].items():
+            files[f"{prefix}/daily/{year}.json"] = _json({**common, "station_id": sid, "year": int(year), "days": days})
     manifest = {
         **common, "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "stations_url": f"{root}/stations.json", "history_csv_url": f"{root}/downloads/frost-history.csv",

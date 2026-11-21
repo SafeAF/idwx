@@ -126,7 +126,7 @@ export function releaseURL(path, base, releaseID) {
 }
 
 export function validateRelease(document, manifest) {
-  if (document.schema_version !== '1.0.0' || document.release_id !== manifest.release_id || document.data_kind !== manifest.data_kind) {
+  if (!['1.0.0', '1.1.0'].includes(document.schema_version) || (manifest.schema_version && document.schema_version !== manifest.schema_version) || document.release_id !== manifest.release_id || document.data_kind !== manifest.data_kind) {
     throw new Error('The archive contains incompatible or mixed release data.');
   }
   return document;

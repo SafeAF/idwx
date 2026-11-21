@@ -163,9 +163,13 @@ scripts, fonts, or frontend build tools are required in production.
 
 See [the static data contract](docs/14_WEB_DATA_CONTRACT.md) and
 [deployment and verification instructions](docs/15_DASHBOARD_DEPLOYMENT.md).
-The proposed [web data explorer and analytics plan](docs/22_DATA_EXPLORER_PLAN.md)
-describes interactive temperature and frost history, year comparisons, filtered
-downloads, and later growing-season analytics within the static architecture.
+The [historical data explorer](docs/23_DATA_EXPLORER_VERIFICATION.md) is available
+at `explore.html` in each new export. It provides temperature timelines,
+comparisons of up to three years, freeze-date distributions and verified
+frost-free intervals, monthly anomaly heatmaps, coverage-aware GDD/winter
+metrics, accessible tables, shareable filters, and matching CSV downloads.
+See the [implementation plan](docs/22_DATA_EXPLORER_PLAN.md) for scope and the
+remaining precipitation review.
 The Nginx configuration is in `deploy/nginx.conf` and allowlists those two API
 origins in `connect-src`. Research-forecast validation remains separate.
 

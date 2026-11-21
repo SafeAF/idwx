@@ -35,7 +35,7 @@ def test_release_contract_csv_consistency_and_privacy(source):
     cfg, stations, output = source
     manifest = export_web_data(cfg, stations, output)
     assert read_json(output / "data/manifest.json") == manifest
-    assert manifest["schema_version"] == "1.0.0"
+    assert manifest["schema_version"] == "1.1.0"
     assert manifest["data_kind"] == "historical_observations"
     for name in ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js"):
         assert (output / name).read_bytes() == (Path("web") / name).read_bytes()
@@ -48,7 +48,8 @@ def test_release_contract_csv_consistency_and_privacy(source):
         content = (output / url).read_bytes()
         assert hashlib.sha256(content).hexdigest() == digest
         assert str(cfg.cache_dir).encode() not in content
-        assert b"tmean_c" not in content  # No raw daily observations.
+        assert b"precip_mm" not in content  # Rainfall remains outside the public analytics contract.
+        assert b"source_files" not in content and b"file_name" not in content
     documents = [read_json(output / entry["url"]) for entry in index["stations"]]
     assert documents[1]["station"]["timezone"] == "America/Los_Angeles"
     assert documents[0]["station"]["timezone"] == cfg.timezone

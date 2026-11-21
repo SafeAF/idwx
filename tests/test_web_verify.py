@@ -141,7 +141,7 @@ def test_csv_cannot_disagree_even_when_its_checksum_is_updated(publication):
 
 def test_canonical_release_identity_is_verified_after_document_checks(publication):
     _, _, root, manifest = publication
-    for relative in [manifest["stations_url"], station_path(root, manifest).relative_to(root).as_posix()]:
+    for relative in [name for name in manifest["files"] if name.endswith(".json")]:
         path = root / relative
         document = read_json(path)
         document["methodology"] = "Changed canonical content"
