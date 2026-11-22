@@ -213,3 +213,21 @@ def test_failed_archive_switch_preserves_previous_artifact(publication, tmp_path
         package_web(root, output, allow_demo=True)
     assert output.read_bytes() == b"previous"
     assert not list(tmp_path.glob(".site-*"))
+
+
+def test_old_schema_12_asset_set_remains_verifiable(publication):
+    from idwx.web_export import WORKSPACE_WEB_ASSETS
+
+    _, _, root, manifest = publication
+    page = root / 'explore.html'
+    page.write_text(page.read_text().replace('js/workspace.js', 'js/explorer.js'))
+    for asset in WORKSPACE_WEB_ASSETS:
+        (root / asset).unlink()
+    assert verify_web(root, allow_demo=True)['release_id'] == manifest['release_id']
+
+
+def test_workspace_html_requires_all_new_runtime_modules(publication):
+    _, _, root, _ = publication
+    (root / 'js/data-client.js').unlink()
+    with pytest.raises(ValueError, match='Missing workspace asset'):
+        verify_web(root, allow_demo=True)

@@ -906,3 +906,58 @@ thead th {
 .saved-chart { padding:1rem 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
 .saved-chart h4 { margin:.25rem 0; font-size:1.1rem; }
 @media(max-width:600px) { .study-form { grid-template-columns:1fr; } }
+
+/* Independent graph cards: 480px minimum column width, then stacked. */
+.explorer-page { background: #eef2f4; }
+.explorer-page > .wrap { max-width: 1680px; }
+.workspace-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-bottom: .5rem; }
+.workspace-toolbar select { font: inherit; min-height: 44px; padding: .4rem; max-width: 100%; }
+.workspace-links { display: flex; flex-wrap: wrap; gap: 1rem; border: 1px solid var(--line); border-radius: 5px; padding: .5rem 1rem; }
+.workspace-links { min-width: 0; }
+.workspace-links legend { font-size: .9rem; }
+.workspace-links label { display: flex; align-items: center; min-height: 44px; }
+.workspace-links input { min-width: 20px; min-height: 20px; }
+.workspace-graphs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 1.5rem; align-items: start; }
+.workspace-graphs[data-count="3"][data-layout="focus"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.workspace-graphs[data-count="3"][data-layout="focus"] > :first-child { grid-column: 1 / -1; }
+.graph-card { min-width: 0; background: var(--white); border: 1px solid #ccd7d7; border-radius: 10px; overflow: hidden; }
+.graph-card-heading { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: start; gap: 1rem; padding: 1.25rem; background: #f6f9f9; border-bottom: 1px solid var(--line); }
+.graph-card-heading h2 { margin: 0 0 .5rem; font: 1.6rem Georgia, serif; }
+.graph-card-heading p { margin: 0; overflow-wrap: anywhere; }
+.graph-card [id$=ex-provenance] { overflow-wrap: anywhere; }
+.graph-card-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.graph-card-actions .button { padding: .5rem .7rem; font-size: .9rem; min-height: 44px; }
+.graph-card-body { padding: 1rem; }
+.graph-card-body .panel { box-shadow: none; padding: 1rem; margin: 1rem 0; }
+.graph-card-body .explorer-filters { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.graph-card-body .methodology { display: block; margin: 1rem 0; }
+.graph-card-body .methodology h2 { font-size: 1.4rem; }
+.graph-card-body .explorer-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.graph-card-body .explorer-stat { padding: .8rem; }
+.graph-card-body .explorer-stat strong { font-size: 1.4rem; }
+.graph-card-body .section-heading { flex-wrap: wrap; }
+.explorer-page .graph-card .explorer-chart { overflow: hidden; }
+.explorer-page .graph-card .explorer-chart svg { min-width: 0; width: 100%; height: auto; }
+.graph-expanded { grid-column: 1 / -1; }
+.workspace-studies { margin-top: 2rem; }
+.workspace-studies > .button { margin: .5rem 1rem .5rem 0; display: inline-block; }
+.workspace-studies input[type=file] { display: block; max-width: 100%; }
+.workspace-toolbar .button, .workspace-studies .button, .graph-card button { min-height: 44px; }
+.explorer-page :focus-visible { outline: 3px solid #24799b; outline-offset: 3px; }
+@media(max-width: 1100px) { .workspace-graphs[data-count="3"][data-layout="focus"] { grid-template-columns: 1fr; } }
+@media(max-width: 520px) {
+  .workspace-toolbar { align-items: stretch; }
+  .workspace-toolbar > * { width: 100%; }
+  .graph-card-body { padding: .65rem; }
+  .graph-card-body .panel { padding: .65rem; }
+  .graph-card-actions { width: 100%; }
+  .graph-card-actions .button { flex: 1 1 auto; }
+  .graph-card-body .explorer-filters { grid-template-columns: 1fr; }
+  .graph-card-body .comparison-year-selectors { grid-template-columns: 1fr; }
+}
+@media print {
+  .workspace-toolbar, .workspace-studies, .explorer-shortcuts, .graph-card-actions, .graph-card .explorer-filters, .graph-card [id$=studies], .graph-card button, .site-header { display: none !important; }
+  .workspace-graphs { display: block; }
+  .graph-card { break-inside: avoid; margin-bottom: 1rem; }
+  .graph-card .table-scroll { max-height: none; overflow: visible; }
+}

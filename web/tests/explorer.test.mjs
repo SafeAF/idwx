@@ -36,13 +36,14 @@ const settle = async predicate => {
   const limit = Date.now() + 10000;
   while (!predicate()) { if (Date.now() > limit) throw new Error('Explorer did not settle'); await new Promise(resolve => setImmediate(resolve)); }
 };
-async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route, savedStudies } = {}) {
+async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route, savedStudies, workspaceMode = false, savedWorkspaces } = {}) {
   const errors = [], requests = [], downloads = [], blobs = new Map(), console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error));
   const dom = new JSDOM(html, { url: 'https://idwx.test/almanac/explore.html' + query, runScripts: 'outside-only', virtualConsole: console });
   t.after(() => { dom.window.close(); assert.deepEqual(errors, []); });
   const { window } = dom;
   if (savedStudies !== undefined) window.localStorage.setItem('idwx.weather-studies.v1', savedStudies);
+  if (savedWorkspaces !== undefined) window.localStorage.setItem('idwx.weather-studies.v2', savedWorkspaces);
   window.Blob = Blob;
   window.URL.createObjectURL = blob => { const key = 'blob:test-' + blobs.size; blobs.set(key, blob); return key; };
   window.URL.revokeObjectURL = () => {};
@@ -57,9 +58,10 @@ async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route, 
     if (!modules.has(url.href)) modules.set(url.href, readFile(url, 'utf8').then(source => new vm.SourceTextModule(source, { context, identifier: url.href })));
     return modules.get(url.href);
   }
-  const app = await moduleFor(pathToFileURL(path.join(root, 'web/js/explorer.js')));
+  const app = await moduleFor(pathToFileURL(path.join(root, workspaceMode ? 'web/js/workspace.js' : 'web/js/explorer.js')));
   await app.link((specifier, reference) => moduleFor(new URL(specifier, reference.identifier)));
   await app.evaluate();
+  if (!workspaceMode) await app.namespace.createExplorer(window.document).ready;
   const $ = id => window.document.getElementById(id);
   await settle(() => !$('explorer-results').hidden || !$('explorer-retry').hidden);
   const apply = async values => {
@@ -342,4 +344,130 @@ test('saved charts identify data changes and reject stations missing from the lo
   links[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   assert.match($('studies-status').textContent, /station is unavailable/);
   assert.equal($('ex-view').value, 'calendar');
+});
+
+
+test('workspace adds three independent scoped graphs and deduplicates shared requests', async t => {
+  const { $, window, requests, apply } = await explorer(t, { workspaceMode: true });
+  const cards = () => [...window.document.querySelectorAll('.graph-card')];
+  const graphReady = card => !card.querySelector('[id$="explorer-results"]').hidden;
+  assert.equal(cards().length, 1);
+  $('workspace-add').click(); await settle(() => cards().length === 2 && cards().every(graphReady));
+  $('workspace-add').click(); await settle(() => cards().length === 3 && cards().every(graphReady));
+  assert.equal($('workspace-add').disabled, true);
+  const ids = [...window.document.querySelectorAll('[id]')].map(n => n.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(requests.filter(path => path.endsWith('/daily/2020.json')).length, 1);
+  const second = cards()[1], secondStart = second.querySelector('[id$="ex-start"]');
+  assert.equal(secondStart.value, '2020-01-01');
+  await apply({ start: '2021-01-01', end: '2021-01-31', unit: 'f' });
+  assert.equal(secondStart.value, '2020-01-01');
+  $('workspace-link-dates').click();
+  await apply({ start: '2022-02-01', end: '2022-02-28' });
+  await settle(() => secondStart.value === '2022-02-01' && cards().every(graphReady));
+  assert.equal(second.querySelector('[id$="ex-unit"]').value, 'c');
+  const encoded = new URL(window.location.href).searchParams.get('workspace');
+  assert.equal(JSON.parse(encoded).graphs.length, 3);
+  second.querySelector('.graph-card-actions button[aria-label^="Expand"]').click();
+  assert.ok(second.classList.contains('graph-expanded'));
+  second.querySelector('.graph-card-actions button[aria-label^="Remove"]').click();
+  assert.equal(cards().length, 2); assert.equal($('workspace-add').disabled, false);
+});
+
+test('workspace studies preserve all cards, applied filters, links and safe notes in backup', async t => {
+  const { $, window, blobs } = await explorer(t, { workspaceMode: true });
+  $('workspace-add').click();
+  await settle(() => window.document.querySelectorAll('.graph-card').length === 2 && !window.document.querySelectorAll('[id$="explorer-results"]')[1].hidden);
+  $('workspace-study-name').value = '<img src=x> Study'; $('workspace-study-notes').value = '<script>plain notes</script>';
+  $('workspace-link-dates').click();
+  $('ex-start').value = '2002-01-01'; // Unapplied edits do not enter saved state.
+  $('workspace-save').click();
+  let stored = JSON.parse(window.localStorage.getItem('idwx.weather-studies.v2'));
+  assert.equal(stored.studies[0].workspace.graphs.length, 2);
+  assert.equal(new URLSearchParams(stored.studies[0].workspace.graphs[0].query).get('start'), '2020-01-01');
+  assert.equal(stored.studies[0].workspace.links.dates, true);
+  assert.equal($('workspace-studies-list').querySelector('img,script'), null);
+  $('workspace-studies-download').click();
+  const backup = await [...blobs.values()].at(-1).text();
+  assert.deepEqual(JSON.parse(backup), stored);
+  $('workspace-studies-list').querySelector('button').click();
+  await settle(() => window.document.querySelectorAll('.graph-card').length === 2 && !$('explorer-results').hidden && $('ex-start').value === '2020-01-01');
+  assert.match($('workspace-studies-status').textContent, /same release/);
+});
+
+test('workspace migration retains v1 bytes and corrupt v2 storage remains untouched', async t => {
+  const chart = { study: 'Old', name: 'Cold', notes: '', query: 'view=temperature', station: 'demo', release: manifest.release_id, data_kind: 'synthetic_demo', saved_at: '2026-11-21T00:00:00Z' };
+  const original = JSON.stringify({ version: 1, charts: [chart] });
+  const { $, window } = await explorer(t, { workspaceMode: true, savedStudies: original });
+  assert.equal(window.localStorage.getItem('idwx.weather-studies.v1'), original);
+  const migrated = JSON.parse(window.localStorage.getItem('idwx.weather-studies.v2'));
+  assert.equal(migrated.studies[0].workspace.graphs.length, 1);
+  assert.match($('workspace-studies-list').textContent, /Old: Cold/);
+  const corrupt = await explorer(t, { workspaceMode: true, savedWorkspaces: '{bad' });
+  assert.equal(corrupt.window.localStorage.getItem('idwx.weather-studies.v2'), '{bad');
+  assert.equal(corrupt.$('workspace-save').disabled, true);
+  assert.equal(corrupt.$('explorer-results').hidden, false);
+});
+
+test('one card failure retries independently and removing a loading graph does not cancel peers', async t => {
+  let failed = true, releaseBlocked, blocked;
+  const { $, window, apply } = await explorer(t, { workspaceMode: true, route: async parsed => {
+    if (parsed.pathname.endsWith('/daily/2021.json') && failed) return { ok: false, status: 503 };
+    if (parsed.pathname.endsWith('/daily/2018.json')) {
+      blocked = true; await new Promise(resolve => { releaseBlocked = resolve; });
+      return { ok: true, json: async () => JSON.parse(files.get(parsed.pathname)) };
+    }
+  } });
+  $('workspace-add').click();
+  const cards = () => [...window.document.querySelectorAll('.graph-card')];
+  await settle(() => cards().length === 2 && !cards()[1].querySelector('[id$="explorer-results"]').hidden);
+  const secondary = cards()[1];
+  secondary.querySelector('[id$="ex-start"]').value = '2021-01-01'; secondary.querySelector('[id$="ex-end"]').value = '2021-01-31';
+  secondary.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await settle(() => !secondary.querySelector('[id$="explorer-retry"]').hidden);
+  assert.equal($('explorer-results').hidden, false);
+  failed = false; secondary.querySelector('[id$="explorer-retry"]').click();
+  await settle(() => !secondary.querySelector('[id$="explorer-results"]').hidden);
+  secondary.querySelector('[id$="ex-start"]').value = '2018-01-01'; secondary.querySelector('[id$="ex-end"]').value = '2018-01-31';
+  secondary.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await settle(() => blocked);
+  secondary.querySelector('[aria-label^="Remove graph"]').click(); releaseBlocked();
+  await apply({ start: '2022-01-01', end: '2022-01-31' });
+  assert.equal(cards().length, 1); assert.match($('ex-table-body').textContent, /2022-01-01/);
+});
+
+test('linked keyboard cursors use matching dates and frost charts keep unique accessible IDs', async t => {
+  const { $, window, apply } = await explorer(t, { workspaceMode: true });
+  $('workspace-add').click();
+  const cards = () => [...window.document.querySelectorAll('.graph-card')];
+  await settle(() => cards().length === 2 && !cards()[1].querySelector('[id$="explorer-results"]').hidden);
+  $('workspace-link-cursor').click();
+  $('ex-chart').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home' }));
+  assert.match(cards()[1].querySelector('[id$="ex-inspection"]').textContent, /2020-01-01/);
+  await apply({ view: 'frost' });
+  const second = cards()[1]; second.querySelector('[id$="ex-view"]').value = 'frost';
+  second.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await settle(() => second.querySelector('[id$="ex-title"]').textContent.includes('Freeze') && !second.querySelector('[id$="explorer-results"]').hidden);
+  const ids = [...window.document.querySelectorAll('[id]')].map(n => n.id);
+  assert.equal(ids.length, new Set(ids).size);
+  for (const svg of window.document.querySelectorAll('.graph-card svg[aria-labelledby]')) for (const id of svg.getAttribute('aria-labelledby').split(' ')) assert.ok(window.document.getElementById(id));
+});
+
+test('workspace URLs restore all cards and missing saved locations fail within their own card', async t => {
+  const config = { version: 2, graphs: [
+    { station: 'demo', query: 'view=temperature&start=2020-01-01&end=2020-12-31&unit=f' },
+    { station: 'demo', query: 'view=calendar&start=2021-01-01&end=2021-12-31&unit=c' },
+  ], links: { dates: false, location: false, cursor: true }, layout: 'equal' };
+  const query = '?workspace=' + encodeURIComponent(JSON.stringify(config));
+  const { $, window } = await explorer(t, { workspaceMode: true, query });
+  const cards = [...window.document.querySelectorAll('.graph-card')];
+  assert.equal(cards.length, 2); assert.equal($('ex-unit').value, 'f');
+  assert.equal(cards[1].querySelector('[id$="ex-view"]').value, 'calendar');
+  assert.equal($('workspace-link-cursor').checked, true); assert.equal($('workspace-layout').value, 'equal');
+  config.graphs[1].station = 'unavailable_location';
+  const failed = await explorer(t, { workspaceMode: true, query: '?workspace=' + encodeURIComponent(JSON.stringify(config)) });
+  const failedCards = [...failed.window.document.querySelectorAll('.graph-card')];
+  assert.equal(failed.$('explorer-results').hidden, false);
+  assert.equal(failedCards[1].querySelector('[id$="explorer-results"]').hidden, true);
+  assert.match(failedCards[1].querySelector('[id$="explorer-status"]').textContent, /unavailable/);
 });

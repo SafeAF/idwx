@@ -239,7 +239,7 @@ test('semantic controls, focus targets and table alternatives remain available',
   assert.equal($('chart').tabIndex, 0);
   assert.ok(window.document.querySelector('[aria-label="Historical baseline dates and coverage"] thead').textContent.includes('P10–P90'));
   assert.equal($('chart').querySelector('svg').getAttribute('role'), 'img');
-  assert.ok($('chart').querySelector('#chart-desc').textContent.includes('history table'));
+  assert.ok($('chart').querySelector('[id$=chart-desc]').textContent.includes('history table'));
   assert.ok(window.document.querySelector('a.skip-link[href="#main"]'));
   for (const region of window.document.querySelectorAll('.table-scroll')) assert.equal(region.tabIndex, 0);
   assert.ok($('table-caption').textContent.includes('Alpha'));

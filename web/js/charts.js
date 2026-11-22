@@ -20,15 +20,17 @@ export function renderHistory(container, records, summaries, selectedYear, optio
     container.append(message);
     return;
   }
-  const width = 1000, height = 350, left = 52, right = 26, top = 22, bottom = 38;
+  const width = Math.max(320, Math.min(1000, container.getBoundingClientRect().width || 1000));
+  const height = 350, left = 52, right = 26, top = 22, bottom = 38;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const first = Math.min(...records.map(r => r.season_year), selectedYear);
   const last = Math.max(...records.map(r => r.season_year), selectedYear);
   const x = year => left + (first === last ? .5 : (year - first) / (last - first)) * plotWidth;
   const y = day => top + ((day - 1) / 365) * plotHeight;
-  const svg = element('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-labelledby': 'chart-title chart-desc' });
-  svg.append(element('title', { id: 'chart-title' }, 'Annual confirmed spring and fall freeze dates'));
-  svg.append(element('desc', { id: 'chart-desc' }, 'Years run from left to right. Calendar dates run from January at the top to December at the bottom. Green dots are last spring freezes; rust dots are first fall freezes. Shaded historical P10 to P90 bands and dashed medians appear where sufficient history exists. Missing or provisional events have no dot. All values are available in the history table.'));
+  const titleID = `${container.id || 'history'}-chart-title`, descriptionID = `${container.id || 'history'}-chart-desc`;
+  const svg = element('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-labelledby': `${titleID} ${descriptionID}` });
+  svg.append(element('title', { id: titleID }, 'Annual confirmed spring and fall freeze dates'));
+  svg.append(element('desc', { id: descriptionID }, 'Years run from left to right. Calendar dates run from January at the top to December at the bottom. Green dots are last spring freezes; rust dots are first fall freezes. Shaded historical P10 to P90 bands and dashed medians appear where sufficient history exists. Missing or provisional events have no dot. All values are available in the history table.'));
   for (const [date, label] of [['2000-01-01', 'Jan'], ['2000-04-01', 'Apr'], ['2000-07-01', 'Jul'], ['2000-10-01', 'Oct'], ['2000-12-31', 'Dec']]) {
     const yy = y(calendarDay(date));
     svg.append(element('line', { x1: left, x2: width - right, y1: yy, y2: yy, class: 'grid' }));
@@ -44,7 +46,8 @@ export function renderHistory(container, records, summaries, selectedYear, optio
   }
   svg.append(element('line', { x1: x(selectedYear), x2: x(selectedYear), y1: top, y2: height - bottom, class: 'selected' }));
   const years = new Set([first, last]);
-  const step = Math.max(1, Math.ceil((last - first) / 6));
+  const intervals = Math.max(2, Math.floor((width - left - right) / 100));
+  const step = Math.max(1, Math.ceil((last - first) / intervals));
   for (let year = first + step; year < last - step / 2; year += step) years.add(year);
   for (const year of years) svg.append(element('text', { x: x(year), y: height - 10, 'text-anchor': 'middle' }, year));
   const inspection = [];

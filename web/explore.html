@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Explore temperature & frost history · IDWX</title>
+  <title>Explore Idaho climate history · IDWX</title>
   <meta name="description" content="Explore Twin Falls historical temperatures, compare years, and analyze freeze dates with coverage-aware data downloads.">
-  <link rel="stylesheet" href="css/styles.css"><script type="module" src="js/explorer.js"></script>
+  <link rel="stylesheet" href="css/styles.css"><script type="module" src="js/workspace.js"></script>
 </head>
 <body class="explorer-page">
   <a class="skip-link" href="#explorer">Skip to the explorer</a>
   <header class="site-header wrap"><a class="brand" href="./">IDWX <span class="brand-divider">/</span> Twin Falls Weather</a><a href="./#historical" class="header-link">Weather & frost almanac</a></header>
   <main id="explorer" class="wrap" tabindex="-1">
-    <section class="explorer-intro"><p class="eyebrow">The historical record</p><h1>Explore the seasons.</h1><p>Follow daily temperatures, compare years, and investigate freeze dates. Every view includes its coverage and the values behind it.</p>
-      <nav class="explorer-shortcuts" aria-label="Visualization shortcuts"><a href="?view=compare">Compare years</a><a href="?view=annual">Yearly statistics</a><a href="?view=month-compare">A month across years</a><a href="?view=monthly">Monthly profile</a><a href="?view=heatmap">Anomaly heatmap</a><a href="?view=frost">Freeze dates</a><a href="?view=calendar">Calendar-day records</a><a href="#studies">Saved studies</a><a href="?view=precipitation">Precipitation</a><a href="?view=assessment">Growing-year assessment</a></nav></section>
+    <section class="explorer-intro"><p class="eyebrow">The historical record</p><h1>Explore the seasons.</h1><p>Build a study with one, two, or three independent graphs. Compare historical temperatures, precipitation and freeze dates, with coverage and downloadable values behind every view.</p>
+      <nav class="explorer-shortcuts" aria-label="Visualization shortcuts"><a href="?view=compare">Compare years</a><a href="?view=annual">Yearly statistics</a><a href="?view=month-compare">A month across years</a><a href="?view=monthly">Monthly profile</a><a href="?view=heatmap">Anomaly heatmap</a><a href="?view=frost">Freeze dates</a><a href="?view=calendar">Calendar-day records</a><a href="#workspace-studies">Saved studies</a><a href="?view=precipitation">Precipitation</a><a href="?view=assessment">Growing-year assessment</a></nav></section>
     <div id="explorer-status" class="status" role="status" aria-live="polite">Loading the archive…</div>
     <button id="explorer-retry" class="button" hidden>Retry this selection</button>
     <p id="explorer-notice" class="notice" hidden></p>

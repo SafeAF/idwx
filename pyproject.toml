@@ -38,6 +38,9 @@ packages = ["idwx"]
 "web/js/explorer-charts.js" = "idwx/web_assets/js/explorer-charts.js"
 
 "web/js/growing.js" = "idwx/web_assets/js/growing.js"
+"web/js/data-client.js" = "idwx/web_assets/js/data-client.js"
+"web/js/workspace-state.js" = "idwx/web_assets/js/workspace-state.js"
+"web/js/workspace.js" = "idwx/web_assets/js/workspace.js"
 
 [dependency-groups]
 dev = [

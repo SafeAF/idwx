@@ -1,0 +1,196 @@
+# Existing archive only. No collection or publication admission is implied.
+version: 1
+adapter: oikolab_era5_archive_v1
+timestamp_convention: naive_utc
+start_utc: '1980-01-01T00:00:00Z'
+end_utc: '2022-12-31T23:00:00Z'
+sources:
+- station_id: point_42_040929_114_872226
+  file: 42.040929--114.872226-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.040929
+  longitude: -114.872226
+  name: 42.040929, -114.872226
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 138f2ea232d9332afe7c36c31ec5ecaef3dd596655e088dd98b5e8d81dd0f4af
+- station_id: point_42_136474_114_293275
+  file: 42.136474--114.293275-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.136474
+  longitude: -114.293275
+  name: 42.136474, -114.293275
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 5b8b615d28c172171dd1b6872f3aa961731a371953cceb31bb1b01e74b05ade7
+- station_id: point_42_275969_113_895653
+  file: 42.275969--113.895653-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.275969
+  longitude: -113.895653
+  name: 42.275969, -113.895653
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 866f23f97ce74836635969bb2d8f4ab9e4f7f374ab3d7b1fc4e809f72067d814
+- station_id: point_42_4436_112_2156
+  file: 42.4436--112.2156-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.4436
+  longitude: -112.2156
+  name: 42.443600, -112.215600
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: fb3247f924f9077c6a661c96c4d5a521541e0466e8965519e15b6c3fb1a6e566
+- station_id: twin_falls
+  file: 42.4634--114.4975-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.4634
+  longitude: -114.4975
+  name: Twin Falls
+  label_status: existing_reviewed_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 1a439c26f6426236e943b22221a1246da8d9b5fc438d145f00b0971536311a8e
+- station_id: point_42_4679_114_1523
+  file: 42.4679--114.1523-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.4679
+  longitude: -114.1523
+  name: 42.467900, -114.152300
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: fd379fe3e50905301e1d361e1d4f604070c5a84be0c7df72d1e4759b4e71e5c7
+- station_id: point_42_5992_114_759
+  file: 42.5992--114.759-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.5992
+  longitude: -114.759
+  name: 42.599200, -114.759000
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: be7d8e82cfcb3b1fc4e535911b67e5bc8c608862c29e0b18b98ae35b5f208e78
+- station_id: point_42_6351_113_7199
+  file: 42.6351--113.7199-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.6351
+  longitude: -113.7199
+  name: 42.635100, -113.719900
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 21f3f5227e08fad9839a074916aec627571a526660197130dd4cfd85dcccee53
+- station_id: point_42_6556_116_8516
+  file: 42.6556--116.8516-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.6556
+  longitude: -116.8516
+  name: 42.655600, -116.851600
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: a6553d38172d69b659a1078919d5e23cd7bda1cb4028bc8f901ac21b516ea589
+- station_id: point_42_778824_113_528056
+  file: 42.778824--113.528056-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.778824
+  longitude: -113.528056
+  name: 42.778824, -113.528056
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 6e3083cf112b3863106429e86d3779c182fbe77b6340bf8db01d1869ccda9d18
+- station_id: point_42_8751_112_8793
+  file: 42.8751--112.8793-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.8751
+  longitude: -112.8793
+  name: 42.875100, -112.879300
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 4d0f4c116b33d582292aa2e9e9a932623d1c6131e376d9179bdee19cbf5214a0
+- station_id: point_42_918_115_9554
+  file: 42.918--115.9554-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.918
+  longitude: -115.9554
+  name: 42.918000, -115.955400
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 143d67d73f066980202ad838f7a5407cb87ebe6c7cedbc0fa2a23ae30faf6506
+- station_id: point_42_976403_114_688651
+  file: 42.976403--114.688651-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 42.976403
+  longitude: -114.688651
+  name: 42.976403, -114.688651
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: e38ef994f32b89d3c053590443da911cb7d684435fded22719815dedf90026d1
+- station_id: point_43_343642_114_205501
+  file: 43.343642--114.205501-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 43.343642
+  longitude: -114.205501
+  name: 43.343642, -114.205501
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: e9781e894aeb12693a9a0bc8cc6c6fe7b0ebd8a1bec1f62d28494caa3cba0276
+- station_id: point_43_679833_114_355867
+  file: 43.679833--114.355867-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 43.679833
+  longitude: -114.355867
+  name: 43.679833, -114.355867
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: 45bba50a7763569e5ef7824c47ac1188e33c4e056b76f412380a1ea18e7783f2
+- station_id: point_43_879858_116_531095
+  file: 43.879858--116.531095-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 43.879858
+  longitude: -116.531095
+  name: 43.879858, -116.531095
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: fe1959d5b813142f71d1b067708fc8f34ab1d820c5cd5e018ed774bbee79cac8
+- station_id: point_44_042849_116_937079
+  file: 44.042849--116.937079-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 44.042849
+  longitude: -116.937079
+  name: 44.042849, -116.937079
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: d320a4fb8ddfc0b3730d3827fcca9c711f8c49f3aa5e751c1e1a3290f2e86d0d
+- station_id: point_45_169153_113_827914
+  file: 45.169153--113.827914-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 45.169153
+  longitude: -113.827914
+  name: 45.169153, -113.827914
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -7
+  model: era5
+  sha256: db3ae4a9e2c9d7f146643687fc54507ddd01547da31fa58dff2d9b99b0a1c1fe
+- station_id: point_45_975976_116_123625
+  file: 45.975976--116.123625-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 45.975976
+  longitude: -116.123625
+  name: 45.975976, -116.123625
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -8
+  model: era5
+  sha256: c983f083d3a0f998781f41150e9efcd2740caa9011f7d577e19576201bff0fc7
+- station_id: point_46_694995_116_942834
+  file: 46.694995--116.942834-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 46.694995
+  longitude: -116.942834
+  name: 46.694995, -116.942834
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -8
+  model: era5
+  sha256: 0638bba0b116008b4aaa8e1abdb8a848d846d5d32b766d353914636a2e191e9e
+- station_id: point_47_703796_116_757602
+  file: 47.703796--116.757602-1980-01-01-2022-12-31-full-params-idaho.csv
+  latitude: 47.703796
+  longitude: -116.757602
+  name: 47.703796, -116.757602
+  label_status: coordinate_label
+  reporting_utc_offset_hours: -8
+  model: era5
+  sha256: 82d0d1fd4ab34fd5a542c0902fc053edca22635cc2f70268cafffaacccfbfdc9

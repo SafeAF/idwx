@@ -26,7 +26,9 @@ from idwx.sqlite_store import load_daily_from_sqlite
 SCHEMA_VERSION = "1.2.0"
 LEGACY_WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js")
 ANALYTICS_WEB_ASSETS = (*LEGACY_WEB_ASSETS, "explore.html", "js/analytics.js", "js/explorer.js", "js/explorer-charts.js")
-WEB_ASSETS = (*ANALYTICS_WEB_ASSETS, "js/growing.js")
+GROWING_WEB_ASSETS = (*ANALYTICS_WEB_ASSETS, "js/growing.js")
+WORKSPACE_WEB_ASSETS = ("js/data-client.js", "js/workspace-state.js", "js/workspace.js")
+WEB_ASSETS = (*GROWING_WEB_ASSETS, *WORKSPACE_WEB_ASSETS)
 EVENT_NAMES = ("last_spring_frost", "first_fall_frost")
 NOTICE = (
     "Temperature-based freeze dates are a proxy for frost risk. Surface frost and crop damage "

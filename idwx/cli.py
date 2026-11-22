@@ -46,6 +46,27 @@ app.add_typer(target_app, name="target")
 app.add_typer(feature_app, name="feature")
 
 
+@data_app.command("audit-climate")
+def audit_climate(
+    source_root: Path = typer.Option(..., "--source-root"),  # noqa: B008
+    manifest: Path = typer.Option(Path("configs/climate_sources.yml"), "--manifest"),  # noqa: B008
+    output: Path = typer.Option(Path("reports/climate-audit.json"), "--output"),  # noqa: B008
+) -> None:
+    """Audit every allowlisted archive row and parameter; never admits or publishes data."""
+    from idwx.climate_audit import audit_archive, write_report
+
+    try:
+        report = audit_archive(manifest, source_root)
+        write_report(report, output, source_root)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps({key: report[key] for key in
+                           ('status', 'publication_ready', 'unavailable_metric_sources')} |
+                          {'sources': len(report['sources']), 'report': str(output)}))
+    if report['status'] == 'blocked':
+        raise typer.Exit(code=1)
+
+
 @data_app.command("audit")
 def data_audit(
     config: str = typer.Option("configs/idaho.yml", "--config"),

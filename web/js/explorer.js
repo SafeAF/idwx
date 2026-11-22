@@ -4,7 +4,17 @@ import { renderHistory } from './charts.js';
 import { lineChart, temperatureSeries } from './explorer-charts.js';
 import { cumulativePrecipitation, growingAssessment, precipitationPeriods, precipitationStats, precipToUnit } from './growing.js';
 
-const $ = id => document.getElementById(id);
+export function createExplorer(root, options = {}) {
+const elements = new Map([...root.querySelectorAll('[id]')].map(el => [el.id, el]));
+const $ = id => elements.get(id);
+// Prefix cloned DOM IDs while preserving local lookup and label relationships.
+if (options.idPrefix) {
+  for (const [id, el] of elements) el.id = options.idPrefix + id;
+  for (const el of root.querySelectorAll('[for], [aria-labelledby], [aria-describedby], a[href^="#"]')) {
+    for (const attr of ['for', 'aria-labelledby', 'aria-describedby']) if (el.hasAttribute(attr)) el.setAttribute(attr, el.getAttribute(attr).split(' ').map(id => options.idPrefix + id).join(' '));
+    if (el.getAttribute('href')?.startsWith('#')) el.setAttribute('href', '#' + options.idPrefix + el.getAttribute('href').slice(1));
+  }
+}
 const base = new URL('.', location.href);
 const state = { manifest: null, stations: null, doc: null, index: null, summary: null, selection: null, rows: [], table: [], columns: [], page: 0, request: 0, cache: new Map() };
 let controller;
@@ -56,6 +66,11 @@ function renderStudies() {
 }
 
 async function fetchJSON(url, signal, cache = true) {
+  if (options.client) {
+    const value = await options.client.json(url, { cache });
+    if (signal.aborted) throw new DOMException('Selection changed', 'AbortError');
+    return value;
+  }
   const key = url.href;
   if (cache && state.cache.has(key)) return state.cache.get(key);
   const response = await fetch(url, { signal, cache: cache ? 'default' : 'no-cache' });
@@ -88,10 +103,11 @@ function syncControls() {
   for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) $('ex-' + key).value = s[key];
   $('ex-compare').value = s.compare.join(','); $('ex-baseline').checked = s.baseline; $('ex-need_water').checked = s.need_water;
   for (let i = 1; i <= 3; i++) $('ex-year-' + i).value = s.compare[i - 1] ?? '';
-  document.querySelectorAll('.explorer-shortcuts a').forEach(a => { if (new URL(a.href).searchParams.get('view') === s.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  root.querySelectorAll('.explorer-shortcuts a').forEach(a => { if (new URL(a.href).searchParams.get('view') === s.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   visibility();
 }
 function writeURL() {
+  if (options.onChange) { options.onChange(snapshot()); return; }
   const url = new URL(location.href), s = state.selection;
   url.searchParams.set('station', state.doc.station.station_id);
   for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) url.searchParams.set(key, s[key]);
@@ -108,6 +124,7 @@ function paramsFromForm() {
 function showError(error, request) {
   if (error.name === 'AbortError' || request !== state.request) return;
   state.cache.clear();
+  options.client?.clear();
   $('explorer-status').textContent = error.message;
   $('explorer-results').hidden = true; $('explorer-retry').hidden = false;
 }
@@ -118,7 +135,9 @@ async function openSelection(stationID, params, push = true) {
   $('explorer-status').textContent = 'Loading selected historical data…'; $('explorer-results').hidden = true; $('explorer-retry').hidden = true;
   $('ex-download').disabled = true; $('study-save').disabled = true;
   try {
-    const entry = state.stations.stations.find(s => s.station.station_id === stationID) || state.stations.stations[0];
+    const found = state.stations.stations.find(s => s.station.station_id === stationID);
+    if (options.strictStation && stationID && !found) throw new Error('This saved location is unavailable in the loaded release. Edit the graph to select an available location.');
+    const entry = found || state.stations.stations[0];
     const doc = validateStationDocument(await releaseDocument(entry.url, signal), entry.station.station_id);
     if (!doc.analytics_url) throw new Error('This release has no daily explorer data.');
     const index = await releaseDocument(doc.analytics_url, signal);
@@ -142,8 +161,9 @@ async function openSelection(stationID, params, push = true) {
 
     $('ex-threshold').replaceChildren(...doc.thresholds_c.map(t => option(t, temperature(t, selection.unit) + ' or colder')));
     for (const id of ['ex-start', 'ex-end']) { $(id).min = `${years()[0]}-01-01`; $(id).max = `${years().at(-1)}-12-31`; }
-    syncControls(); if (push) writeURL();
+    syncControls();
     render();
+    if (push) writeURL();
     $('explorer-results').hidden = false; $('ex-download').disabled = !state.table.length; $('study-save').disabled = !studiesAvailable; renderStudies();
     $('explorer-status').textContent = `${doc.station.name}: ${(selection.view === 'compare' || selection.view === 'precipitation' && ['compare', 'cumulative'].includes(selection.rain_mode)) ? selection.compare.join(', ') : selection.start + ' through ' + selection.end} loaded.`;
   } catch (error) { showError(error, request); }
@@ -279,7 +299,7 @@ function renderHeatmap() {
       const value = toUnit(r?.value, s.unit, true), button = node('button', shown(value), !finite(value) ? 'missing' : value > 0 ? 'warm' : 'cold');
       button.type = 'button'; button.title = button.ariaLabel = `${period}: ${finite(value) ? shown(value) + ' degrees departure' : 'unavailable'}; ${r?.valid ?? 0}/${r?.expected ?? new Date(Date.UTC(Number(year), month, 0)).getUTCDate()} paired days. Open daily view.`;
       button.onclick = () => {
-        const params = new URLSearchParams(location.search); params.set('view', 'temperature'); params.set('start', period + '-01'); params.set('end', `${period}-${new Date(Date.UTC(Number(year), month, 0)).getUTCDate()}`);
+        const params = new URLSearchParams(); params.set('view', 'temperature'); params.set('start', period + '-01'); params.set('end', `${period}-${new Date(Date.UTC(Number(year), month, 0)).getUTCDate()}`);
         openSelection(state.doc.station.station_id, params);
       };
       td.append(button); tr.append(td);
@@ -343,6 +363,7 @@ function renderAssessment() {
 
 function render() {
   const s = state.selection, period = baseline();
+  $('ex-chart').removeEventListener('idwx-inspect-linked', $('ex-chart')._linkedInspection);
   $('ex-extra').replaceChildren(); $('ex-chart').replaceChildren(); $('ex-chart').onkeydown = null;
   inspect('Select a chart position or use the arrow keys to inspect values.');
   $('ex-period').textContent = (s.view === 'compare' || s.view === 'precipitation' && ['compare', 'cumulative'].includes(s.rain_mode)) ? `Full years ${s.compare.join(' / ')}` : `${s.start} through ${s.end}`;
@@ -404,18 +425,20 @@ $('ex-download').onclick = () => {
 async function load() {
   controller?.abort(); controller = new AbortController();
   try {
-    const manifest = await fetchJSON(new URL('data/manifest.json', base), controller.signal, false);
+    const manifest = options.client ? await options.client.pin() : await fetchJSON(new URL('data/manifest.json', base), controller.signal, false);
     if (!['1.1.0', '1.2.0'].includes(manifest.schema_version) || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('This archive does not yet include the data explorer.');
     state.manifest = manifest;
     state.stations = await releaseDocument(manifest.stations_url, controller.signal);
     if (!Array.isArray(state.stations.stations) || !state.stations.stations.length) throw new Error('No stations are available.');
     $('ex-station').replaceChildren(...state.stations.stations.map(s => option(s.station.station_id, s.station.name))); $('ex-station').disabled = false;
-    const params = new URLSearchParams(location.search);
-    await openSelection(params.get('station'), params);
+    const params = new URLSearchParams(options.query ?? location.search);
+    await openSelection(options.station ?? params.get('station'), params, false);
+    options.onReady?.(snapshot());
   } catch (error) { showError(error, state.request); }
 }
 $('explorer-retry').onclick = () => state.stations && state.pending ? openSelection(state.pending.stationID, state.pending.params, state.pending.push) : load();
-window.addEventListener('popstate', () => { if (state.stations) { const params = new URLSearchParams(location.search); openSelection(params.get('station'), params, false); } });
+const popstate = () => { if (state.stations) { const params = new URLSearchParams(location.search); openSelection(params.get('station'), params, false); } };
+if (!options.onChange) window.addEventListener('popstate', popstate);
 try { studies = parseStudies(localStorage.getItem(studiesKey)); }
 catch { studiesAvailable = false; $('studies-import').disabled = true; $('studies-status').textContent = 'Saved studies could not be read. Existing storage is preserved; the explorer is still available.'; }
 renderStudies();
@@ -446,4 +469,29 @@ $('studies-import').onchange = async event => {
   } catch { $('studies-status').textContent = 'Could not import this study file. Choose an IDWX studies backup of at most 50 charts. Existing studies are preserved.'; }
   event.target.value = '';
 };
-load();
+function snapshot() {
+  if (!state.selection || !state.doc) return null;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(state.selection)) params.set(key, Array.isArray(value) ? value.join(',') : typeof value === 'boolean' ? value ? 'on' : 'off' : value);
+  return { station: state.doc.station.station_id, query: params.toString() };
+}
+const ready = load();
+let lastWidth = 0, resizeFrame;
+const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+  const width = entries[0]?.contentRect.width;
+  if (!(width > 0) || Math.abs(width - lastWidth) < 2) return;
+  lastWidth = width;
+  if (!state.selection || $('explorer-results').hidden) return;
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => {
+    const page = state.page; render(); state.page = Math.min(page, Math.max(0, Math.ceil(state.table.length / 100) - 1)); renderTable();
+  });
+}) : null;
+resize?.observe($('ex-chart'));
+return { ready, snapshot, elements,
+  setSelection: (selection, push = true) => openSelection(selection.station, new URLSearchParams(selection.query), push),
+  download: () => $('ex-download').click(),
+  edit: () => { $('explorer-filters').hidden = !$('explorer-filters').hidden; if (!$('explorer-filters').hidden) $('ex-view').focus(); },
+  destroy: () => { controller?.abort(); ++state.request; resize?.disconnect(); if (resizeFrame) cancelAnimationFrame(resizeFrame); state.cache.clear(); window.removeEventListener('popstate', popstate); },
+};
+}

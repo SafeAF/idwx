@@ -19,9 +19,11 @@ from idwx.precipitation import validate_method
 from idwx.web_export import (
     ANALYTICS_WEB_ASSETS,
     EVENT_NAMES,
+    GROWING_WEB_ASSETS,
     LEGACY_WEB_ASSETS,
     SCHEMA_VERSION,
     WEB_ASSETS,
+    WORKSPACE_WEB_ASSETS,
 )
 
 COMMON = {"schema_version", "release_id", "data_kind", "methodology"}
@@ -308,7 +310,9 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     documents, ids, expected_files, rows = [], set(), {manifest["stations_url"], manifest["history_csv_url"]}, []
     analytics = []
     if manifest["schema_version"] != "1.0.0":
-        _require(all((root / name).is_file() for name in (WEB_ASSETS if manifest["schema_version"] == SCHEMA_VERSION else ANALYTICS_WEB_ASSETS)), "Missing explorer asset")
+        _require(all((root / name).is_file() for name in (GROWING_WEB_ASSETS if manifest["schema_version"] == SCHEMA_VERSION else ANALYTICS_WEB_ASSETS)), "Missing explorer asset")
+        if b'js/workspace.js' in (root / 'explore.html').read_bytes():
+            _require(all((root / name).is_file() for name in WORKSPACE_WEB_ASSETS), 'Missing workspace asset')
     for entry in index["stations"]:
         _keys(entry, {"station", "source_coverage", "url"}, "station index entry")
         sid = entry["station"]["station_id"]

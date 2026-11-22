@@ -13,7 +13,8 @@ export function lineChart(container, series, { title, unit = '', inspect, mark =
   container.replaceChildren();
   const points = series.flatMap(s => s.points), valid = points.filter(p => finite(p.y));
   if (!valid.length) { container.textContent = 'No complete values to plot in this selection. See the table and coverage.'; return; }
-  const width = 1000, height = 360, left = 65, right = 28, top = 25, bottom = 48;
+  const width = Math.max(320, Math.min(1000, container.getBoundingClientRect().width || 1000));
+  const height = width < 520 ? 300 : 360, left = 65, right = 28, top = 25, bottom = 48;
   const xs = points.map(p => p.x), ys = valid.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), maxY = Math.max(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), padding = Math.max(1, (maxY - minY) * .12);
@@ -73,16 +74,24 @@ export function lineChart(container, series, { title, unit = '', inspect, mark =
   }
   const cursor = make('line', { y1: top, y2: height - bottom, stroke: '#243e33', 'stroke-dasharray': '3 3', visibility: 'hidden' });
   svg.append(cursor); container.append(svg);
-  let current = 0;
+  let current = 0, linked = false;
   const show = index => {
     current = Math.max(0, Math.min(positions.length - 1, index));
     const [position, label] = positions[current];
     cursor.setAttribute('x1', x(position)); cursor.setAttribute('x2', x(position)); cursor.setAttribute('visibility', 'visible');
+    if (!linked) container.dispatchEvent(new CustomEvent('idwx-inspect', { bubbles: true, detail: { label } }));
     inspect(`${label} · ` + series.map(s => {
       const p = s.points.find(p => p.x === position);
       return `${s.name}: ${p?.detail || (finite(p?.y) ? `${shown(p.y)} ${unit}` : 'unavailable')}`;
     }).join(' · '));
   };
+  container.onidwxinspect = event => {
+    const index = positions.findIndex(([, label]) => label === event.detail.label);
+    if (index >= 0) { linked = true; show(index); linked = false; }
+  };
+  container.removeEventListener('idwx-inspect-linked', container._linkedInspection);
+  container._linkedInspection = container.onidwxinspect;
+  container.addEventListener('idwx-inspect-linked', container._linkedInspection);
   container.onkeydown = event => {
     if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       event.preventDefault(); show(event.key === 'Home' ? 0 : event.key === 'End' ? positions.length - 1 : current + (event.key === 'ArrowRight' ? 1 : -1));

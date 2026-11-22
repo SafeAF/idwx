@@ -1,6 +1,8 @@
 # Idaho weather exploration implementation plan
 
-Status: proposed implementation, November 21, 2026.
+Status: implementation started, November 21, 2026. The first increment is recorded in
+[implementation status and evidence](28_MULTILOCATION_IMPLEMENTATION_STATUS.md);
+the remaining phases and acceptance gates below remain planned.
 
 Build a polished climate exploration workspace using the existing Idaho archive,
 with all reviewed locations and parameters, stronger analytical tools, and
