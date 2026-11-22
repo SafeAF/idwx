@@ -173,8 +173,9 @@ metrics, accessible tables, shareable filters, and matching CSV downloads.
 It also includes total-precipitation graphs (daily, monthly, yearly, year
 comparisons, and cumulative curves) and a growing-year assessment against
 your heat, frost-free-day, and optional precipitation requirements. Both are
-linked from the homepage. Reviewed precipitation covers January 1, 1980 through
-December 30, 2022; later amounts remain unavailable. Soil fertility is not
+linked from the homepage. The checked-in seed has reviewed precipitation from
+January 1, 1980 through December 30, 2022. Daily production updates extend
+coverage using reviewed Oikolab hourly fragments. Soil fertility is not
 inferred from weather. See [precipitation and growing-year methods](docs/24_PRECIPITATION_GROWING_ASSESSMENT.md)
 and the [implementation plan](docs/22_DATA_EXPLORER_PLAN.md).
 The Nginx configuration is in `deploy/nginx.conf` and allowlists those two API
@@ -201,3 +202,7 @@ windows and maps research bounds onto actual forecast-year dates. Backtests
 report elapsed-day errors separately from raw calendar-coordinate errors.
 Earlier protocol artifacts require rebuilding/retraining under input version 2.
 
+
+Daily historical refresh setup and operations are documented in
+[Daily Oikolab updates](docs/25_DAILY_OIKOLAB_UPDATES.md). The production batch
+job is separate from live browser forecasts and uses private input snapshots.

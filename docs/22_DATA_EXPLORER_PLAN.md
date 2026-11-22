@@ -2,8 +2,10 @@
 
 Status: phases 1–4 implemented locally, November 21, 2026. Temperature/frost
 exploration, monthly anomalies, and coverage-aware seasonal metrics are
-included. Phase 5 is implemented for the independently audited original hourly
-archive only; refresh-period precipitation remains unavailable. A growing-year
+included. Phase 5 initially covered the independently audited original hourly
+archive. The [daily updater](25_DAILY_OIKOLAB_UPDATES.md) now reviews fresh
+Oikolab fragments and advances production precipitation coverage. The checked-in
+seed retains its original archive-only cutoff. A growing-year
 requirements assessment is also included. See [methods and audit](24_PRECIPITATION_GROWING_ASSESSMENT.md).
 Production deployment and visual browser acceptance remain separate. See the
 [implementation and verification record](23_DATA_EXPLORER_VERIFICATION.md).

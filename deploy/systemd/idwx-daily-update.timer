@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily IDWX archive update at 04:00 Mountain time
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 America/Denver
+Persistent=true
+AccuracySec=1min
+Unit=idwx-daily-update.service
+
+[Install]
+WantedBy=timers.target

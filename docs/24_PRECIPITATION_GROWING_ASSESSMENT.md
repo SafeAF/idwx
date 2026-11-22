@@ -1,6 +1,9 @@
 # Precipitation and growing-year assessment
 
 Implemented locally November 21, 2026, on `main` from base `2d2203e`.
+This records the initial seed-data implementation. The subsequent
+[daily updater](25_DAILY_OIKOLAB_UPDATES.md) reviews new hourly fragments and
+advances production precipitation coverage, initially through November 15, 2026.
 This adds historical climate exploration; no new collection, database change,
 model training, production deployment, or soil-fertility prediction occurred.
 

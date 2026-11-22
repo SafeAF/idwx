@@ -1,6 +1,7 @@
 """Reviewed hourly precipitation reduction, separate from temperature coverage."""
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
@@ -62,11 +63,26 @@ def build_archive(source: Path, *, expected_sha256: str) -> dict:
 def load_archive(path: Path) -> dict:
     archive = json.loads(path.read_text())
     fields = {'version', 'station_id', 'source_sha256', 'data_kind', 'reporting_utc_offset_hours', 'method', 'days', 'content_sha256'}
-    if set(archive) != fields or archive['version'] != 1 or archive['station_id'] != 'twin_falls' or archive['data_kind'] != 'historical_reanalysis' or archive['reporting_utc_offset_hours'] != -7 or archive['method'] != METHOD:
+    if archive.get('version') == 2:
+        fields.add('refresh_sources')
+    if set(archive) != fields or archive['version'] not in (1, 2) or archive['station_id'] != 'twin_falls' or archive['data_kind'] != 'historical_reanalysis' or archive['reporting_utc_offset_hours'] != -7 or archive['method'] != METHOD:
         raise ValueError('Unsupported reviewed precipitation archive')
     expected = hashlib.sha256(_bytes({k: v for k, v in archive.items() if k != 'content_sha256'})).hexdigest()
     if archive['content_sha256'] != expected:
         raise ValueError('Precipitation archive content digest mismatch')
+    if archive['version'] == 2:
+        sources = archive['refresh_sources']
+        if not isinstance(sources, list) or not sources:
+            raise ValueError('Missing precipitation refresh provenance')
+        for source in sources:
+            if set(source) != {'sha256', 'start_utc', 'end_utc'}:
+                raise ValueError('Invalid precipitation refresh provenance')
+            digest = source['sha256']
+            if not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+                raise ValueError('Invalid precipitation refresh digest')
+            start, end = pd.Timestamp(source['start_utc']), pd.Timestamp(source['end_utc'])
+            if start.tzinfo is None or end.tzinfo is None or start > end:
+                raise ValueError('Invalid precipitation refresh bounds')
     if not isinstance(archive['days'], list) or not archive['days']:
         raise ValueError('Empty precipitation archive')
     previous = None
@@ -81,6 +97,36 @@ def load_archive(path: Path) -> dict:
                          'precip_status': 'complete' if valid == expected else 'incomplete'})
         previous = current
     return archive
+
+
+def extend_archive(archive: dict, source: Path) -> dict:
+    """Audit a continuous Oikolab ERA5 fragment and extend reviewed daily amounts."""
+    frame = pd.read_csv(source)
+    required = {'timestamp', 'model (name)', 'coordinates (lat,lon)', 'utc_offset (hrs)',
+                'total_precipitation (mm of water equivalent)'}
+    if not required.issubset(frame.columns) or not frame['model (name)'].eq('era5').all() or not frame['utc_offset (hrs)'].eq(-7).all():
+        raise ValueError('Unsupported precipitation refresh model/units/reporting offset')
+    coordinates = {str(value) for value in frame['coordinates (lat,lon)']}
+    if not coordinates or any(tuple(ast.literal_eval(value)) != (42.4634, -114.4975) for value in coordinates):
+        raise ValueError('Precipitation refresh coordinate mismatch')
+    stamps = pd.DatetimeIndex(pd.to_datetime(frame['timestamp'], utc=True))
+    if not len(stamps) or not stamps.equals(pd.date_range(stamps.min(), stamps.max(), freq='h')):
+        raise ValueError('Precipitation refresh must have continuous ordered hours')
+    amounts = pd.to_numeric(frame['total_precipitation (mm of water equivalent)'], errors='coerce')
+    if any(not math.isfinite(v) or v < 0 for v in amounts):
+        raise ValueError('Invalid precipitation refresh amounts')
+    rows = {row[0]: row for row in archive['days']}
+    for row in reduce_hours(stamps, amounts):
+        if row[0] not in rows or row[2] >= rows[row[0]][2]:
+            rows[row[0]] = row
+    provenance = {'sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+                  'start_utc': stamps[0].isoformat(), 'end_utc': stamps[-1].isoformat()}
+    sources = [*archive.get('refresh_sources', [])]
+    if provenance not in sources:
+        sources.append(provenance)
+    result = {**{k: v for k, v in archive.items() if k != 'content_sha256'},
+              'version': 2, 'days': [rows[key] for key in sorted(rows)], 'refresh_sources': sources}
+    return {**result, 'content_sha256': hashlib.sha256(_bytes(result)).hexdigest()}
 
 
 def validate_precip(row: dict) -> None:
@@ -108,6 +154,11 @@ def attach_precipitation(daily: dict, cfg, station_id: str, *, demo=False) -> di
         if cfg.database_path is not None:
             with sqlite3.connect(cfg.database_path.resolve().as_uri() + '?mode=ro', uri=True) as connection:
                 sources = {row[0] for row in connection.execute('SELECT sha256 FROM source_files WHERE station_id = ?', (station_id,))}
+                if reviewed.get('refresh_sources'):
+                    refreshes = {(r[0], r[1], r[2]) for r in connection.execute(
+                        'SELECT sha256, requested_start_utc, requested_end_utc FROM source_refreshes WHERE station_id = ?', (station_id,))}
+                    if any((r['sha256'], r['start_utc'], r['end_utc']) not in refreshes for r in reviewed['refresh_sources']):
+                        raise ValueError('Precipitation refresh provenance does not match database')
             if reviewed['source_sha256'] in sources:
                 archive = reviewed
     mapping = {r[0]: r for r in archive['days']} if archive else {}
