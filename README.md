@@ -64,7 +64,10 @@ browser-local weather studies with named chart selections, notes, and backup /
 import. Annual/monthly comparisons, chart styles, precipitation, frost and
 growing-season views were already present. See the
 [feature comparison and prioritized recommendations](docs/26_IDAWEATHER_COMPARISON.md)
-for the remaining hourly, variable, location and study-board work.
+for the remaining hourly, variable, location and study-board work. The
+[implementation plan](docs/27_MULTILOCATION_ANALYTICS_IMPLEMENTATION_PLAN.md)
+scopes the 21-location archive, all 27 parameters, richer analyses and an
+optional second or third graph.
 
 ## Twin Falls data
 
