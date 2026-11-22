@@ -1,3 +1,5 @@
+import { normalizeParameterSelection, parameterRows, validateParameterCatalog, validateParameterMonth } from './parameter-samples.js';
+import { verifiedJSON } from './data-client.js';
 import { EVENT_NAMES, calendarDay, releaseURL, statusLabel, temperature, validateRelease, validateStationDocument } from './format.js';
 import { METRICS, aggregate, calendarRecords, csv, finite, frostDistribution, monthlyAnomalies, normalizeSelection, parseStudies, periodStatistics, seasonalMetrics, selectedRows, selectionYears, shown, statistics, toUnit, validateChunk } from './analytics.js';
 import { renderHistory } from './charts.js';
@@ -65,17 +67,17 @@ function renderStudies() {
   });
 }
 
-async function fetchJSON(url, signal, cache = true) {
+async function fetchJSON(url, signal, cache = true, sha256 = null) {
   if (options.client) {
-    const value = await options.client.json(url, { cache });
+    const value = await options.client.json(url, { cache, sha256 });
     if (signal.aborted) throw new DOMException('Selection changed', 'AbortError');
     return value;
   }
-  const key = url.href;
+  const key = url.href + (sha256 ? '#' + sha256 : '');
   if (cache && state.cache.has(key)) return state.cache.get(key);
   const response = await fetch(url, { signal, cache: cache ? 'default' : 'no-cache' });
   if (!response.ok) throw new Error(`Archive request failed (${response.status}). Retry this selection.`);
-  const doc = await response.json();
+  const doc = await verifiedJSON(response, sha256);
   if (signal.aborted) throw new DOMException('Selection changed', 'AbortError');
   if (cache) state.cache.set(key, doc);
   return doc;
@@ -85,6 +87,14 @@ const releaseDocument = async (path, signal) => validateRelease(await fetchJSON(
 function visibility() {
   const view = $('ex-view').value;
   const custom = ['annual', 'month-compare', 'monthly'].includes(view);
+  const supplied = view === 'parameters';
+  $('parameter-control').hidden = !supplied;
+  $('ex-metric').closest('label').hidden = $('ex-unit').closest('label').hidden = $('ex-baseline').closest('label').hidden = supplied;
+  $('ex-start-label').textContent = supplied ? 'From UTC date (up to 31 days)' : 'From local date';
+  $('ex-end-label').textContent = supplied ? 'Through UTC date' : 'Through local date';
+  const direction = $('ex-parameter').value.includes('direction');
+  if (supplied && direction) $('ex-mark').value = 'scatter';
+  for (const item of $('ex-mark').options) item.disabled = supplied && (['bar', 'area'].includes(item.value) || direction && item.value !== 'scatter');
   const rain = view === 'precipitation';
   const rainCompare = rain && ['compare', 'cumulative'].includes($('ex-rain_mode').value);
   $('rain-mode-control').hidden = $('rain-unit-control').hidden = !rain;
@@ -92,9 +102,9 @@ function visibility() {
   $('compare-control').hidden = view !== 'compare' && !rainCompare; $('threshold-control').hidden = !['frost', 'assessment'].includes(view);
   $('profile-year-control').hidden = view !== 'monthly'; $('month-control').hidden = view !== 'month-compare';
   $('statistic-control').hidden = !custom;
-  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'calendar', 'precipitation', 'assessment'].includes(view);
+  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'calendar', 'precipitation', 'assessment', 'parameters'].includes(view);
   $('ex-start').disabled = $('ex-end').disabled = (['compare', 'monthly'].includes(view) || rainCompare);
-  $('ex-metric').disabled = ['calendar', 'frost', 'seasonal', 'precipitation', 'assessment'].includes(view);
+  $('ex-metric').disabled = ['calendar', 'frost', 'seasonal', 'precipitation', 'assessment', 'parameters'].includes(view);
   $('ex-unit').disabled = rain;
   $('ex-baseline').disabled = !['temperature', 'compare'].includes(view);
 }
@@ -109,6 +119,11 @@ function syncControls() {
 function writeURL() {
   if (options.onChange) { options.onChange(snapshot()); return; }
   const url = new URL(location.href), s = state.selection;
+  if (s.view === 'parameters') {
+    url.search = snapshot().query; url.searchParams.set('station', state.doc.station.station_id);
+    if (url.href !== location.href) history.pushState(null, '', url);
+    return;
+  }
   url.searchParams.set('station', state.doc.station.station_id);
   for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) url.searchParams.set(key, s[key]);
   url.searchParams.set('compare', s.compare.join(',')); url.searchParams.set('baseline', s.baseline ? 'on' : 'off'); url.searchParams.set('need_water', s.need_water ? 'on' : 'off');
@@ -117,6 +132,7 @@ function writeURL() {
 function paramsFromForm() {
   const params = new URLSearchParams();
   for (const key of ['view', 'start', 'end', 'unit', 'metric', 'threshold', 'compare', 'month', 'statistic', 'mark', 'profile_year', 'rain_mode', 'rain_unit', 'need_gdd', 'need_days', 'need_precip']) params.set(key, $('ex-' + key).value);
+  params.set('parameter', $('ex-parameter').value);
   params.set('baseline', $('ex-baseline').checked ? 'on' : 'off');
   params.set('need_water', $('ex-need_water').checked ? 'on' : 'off');
   return params;
@@ -135,6 +151,7 @@ async function openSelection(stationID, params, push = true) {
   $('explorer-status').textContent = 'Loading selected historical data…'; $('explorer-results').hidden = true; $('explorer-retry').hidden = true;
   $('ex-download').disabled = true; $('study-save').disabled = true;
   try {
+    if (params.get('view') === 'parameters') { await openParameters(stationID, params, signal, request, push); return; }
     const found = state.stations.stations.find(s => s.station.station_id === stationID);
     if (options.strictStation && stationID && !found) throw new Error('This saved location is unavailable in the loaded release. Edit the graph to select an available location.');
     const entry = found || state.stations.stations[0];
@@ -155,7 +172,7 @@ async function openSelection(stationID, params, push = true) {
     if (summary && (summary.station_id !== entry.station.station_id || !summary.policy)) throw new Error('Invalid seasonal analytics.');
     if (request !== state.request || signal.aborted) return;
     Object.assign(state, { doc, index, selection, summary, rows: selectedRows(chunks, selection), page: 0 });
-    $('ex-station').value = entry.station.station_id;
+    fillLocations('temperature', entry.station.station_id);
     for (let i = 1; i <= 3; i++) $('ex-year-' + i).replaceChildren(...(i > 1 ? [option('', 'None')] : []), ...[...years()].reverse().map(y => option(y, y)));
     $('ex-profile_year').replaceChildren(...[...years()].reverse().map(y => option(y, y)));
 
@@ -167,6 +184,78 @@ async function openSelection(stationID, params, push = true) {
     $('explorer-results').hidden = false; $('ex-download').disabled = !state.table.length; $('study-save').disabled = !studiesAvailable; renderStudies();
     $('explorer-status').textContent = `${doc.station.name}: ${(selection.view === 'compare' || selection.view === 'precipitation' && ['compare', 'cumulative'].includes(selection.rain_mode)) ? selection.compare.join(', ') : selection.start + ' through ' + selection.end} loaded.`;
   } catch (error) { showError(error, request); }
+}
+
+
+function fillLocations(view, selected) {
+  const entries = view === 'parameters' && state.parameters
+    ? state.parameters.stations.map(s => ({ id: s.station_id, name: s.name }))
+    : state.stations.stations.map(s => ({ id: s.station.station_id, name: s.station.name }));
+  $('ex-station').replaceChildren(...entries.map(s => option(s.id, s.name)));
+  if (entries.some(s => s.id === selected)) $('ex-station').value = selected;
+}
+async function openParameters(stationID, params, signal, request, push) {
+  if (!state.parameters) throw new Error('This publication does not include additional parameter samples.');
+  const station = state.parameters.stations.find(s => s.station_id === stationID) || (!stationID ? state.parameters.stations.find(s => s.station_id === 'twin_falls') || state.parameters.stations[0] : null);
+  if (!station) throw new Error('This saved parameter location is unavailable in the loaded publication.');
+  const { shortened, ...selection } = normalizeParameterSelection(params, station, state.parameters.metrics);
+  const needed = station.months.filter(m => m.month >= selection.start.slice(0, 7) && m.month <= selection.end.slice(0, 7));
+  const prefix = state.manifest.parameters_url.slice(0, -'catalog.json'.length);
+  const chunks = await Promise.all(needed.map(async entry => validateParameterMonth(await fetchJSON(releaseURL(prefix + entry.path, base, state.manifest.release_id), signal, true, entry.sha256), entry, station, state.parameters)));
+  if (request !== state.request || signal.aborted) return;
+  state.parameterStation = station;
+  state.selection = selection; state.index = null; state.summary = null; state.parameterShortened = shortened;
+  state.doc = { station: { station_id: station.station_id, name: station.name } };
+  state.rows = parameterRows(chunks, selection, station, state.parameters);
+  fillLocations('parameters', station.station_id);
+  for (const key of ['view', 'parameter', 'start', 'end', 'mark']) $('ex-' + key).value = selection[key];
+  for (const id of ['ex-start', 'ex-end']) { $(id).min = station.first_utc.slice(0, 10); $(id).max = station.last_utc.slice(0, 10); }
+  visibility(); render();
+  $('explorer-results').hidden = false; $('ex-download').disabled = !state.table.length;
+  // New workspace studies support all graph types; the v1 single-chart library stays historical.
+  $('study-save').disabled = true;
+  $('explorer-status').textContent = `${station.name}: ${selection.start} through ${selection.end} UTC loaded.${shortened ? ' Selection limited to 31 days of original samples; choose another range for more.' : ''}`;
+  if (push) writeURL();
+}
+function renderParameters() {
+  const s = state.selection, station = state.parameterStation, metric = state.parameters.metrics.find(m => m.id === s.parameter);
+  const unit = metric.unit || 'unit not specified', values = state.rows.map(r => r.provided_value).filter(finite);
+  $('ex-chart').removeEventListener('idwx-inspect-linked', $('ex-chart')._linkedInspection);
+  $('ex-chart').replaceChildren(); $('ex-extra').replaceChildren(); $('ex-chart').onkeydown = null;
+  $('ex-title').textContent = metric.label + ' · supplied values';
+  $('ex-period').textContent = `${s.start} through ${s.end} · UTC timestamps`;
+  $('ex-provenance').textContent = `${station.name} · ${station.latitude}, ${station.longitude} · ${state.manifest.data_kind} · Source through ${station.last_utc} · Release ${state.manifest.release_id} · Source SHA-256 ${station.source_sha256}`;
+  $('explorer-notice').hidden = false;
+  $('explorer-notice').textContent = `${state.manifest.data_kind === 'synthetic_demo' ? 'Synthetic demonstration. ' : 'Historical ERA5/Oikolab reanalysis. '}Original supplied units and values; this view does not infer accumulation periods or convert values into daily totals.`;
+  $('ex-description').textContent = `Samples in ${unit}, at their source timestamps. Sampling cadence is one hour; the value interval is unspecified. UTC dates govern the selection. Fixed-offset reporting times (UTC${station.reporting_utc_offset_hours}) are shown separately. Missing values remain gaps; flagged values remain as supplied.`;
+  $('ex-legend').textContent = metric.quantity === 'direction' ? 'Direction samples use unconnected points; no arithmetic direction average is calculated.' : 'One supplied value per timestamp; no averaging, integration, or accumulation.';
+  $('ex-source-context').textContent = 'These are archived model/reanalysis values at the selected coordinate, not independent observing stations or live guidance.';
+  $('ex-daily-context').hidden = true;
+  $('ex-method').textContent = 'Provided numeric values and unit strings are preserved. No interval is inferred from a column name or from the hourly timestamp cadence. Source-range screening flags are advisory and do not clamp or remove finite values. No mean, sum, daily rate, radiation energy or physical snow-depth conversion is calculated.';
+  const expected = (Date.parse(s.end + 'T00:00:00Z') - Date.parse(s.start + 'T00:00:00Z')) / 86400000 * 24 + 24;
+  $('ex-statistics').replaceChildren(card('Provided sample coverage', `${values.length}/${expected}`, 'Finite supplied / selected UTC hours'),
+    card('Missing values', String(state.rows.filter(r => r.provided_value === null).length), `${state.rows.length} archived timestamps in this selection`),
+    card('Flagged supplied values', String(state.rows.filter(r => r.quality === 'outside_screening_range_as_supplied').length), 'Retained exactly as provided'),
+    card('Unit as supplied', unit, 'Value interval: unspecified'));
+  lineChart($('ex-chart'), [{ name: metric.label, points: state.rows.map(r => ({ x: r.stamp, label: r.timestamp_utc, y: r.provided_value,
+    detail: `${r.provided_value ?? 'missing'} ${unit} · ${r.quality}` })) }], { title: $('ex-title').textContent, unit, mark: s.mark, inspect,
+      tickLabel: stamp => stamp.slice(5, 10) + ' ' + stamp.slice(11, 13) + 'h',
+      minimumPadding: metric.quantity === 'fraction' ? .001 : metric.quantity === 'temperature' ? .1 : .01,
+      tickValue: value => Number(value.toFixed(4)).toString() });
+  table([['timestamp_utc', 'Timestamp (UTC)'], ['reporting_local_time', 'Fixed-offset source reporting time'], ['provided_value', `Provided value (${unit})`], ['provided_unit', 'Supplied unit'], ['quality', 'Quality note']], state.rows,
+    'Chart, table and CSV use the same unaggregated supplied samples. Missing values are blank in CSV; finite out-of-range values are preserved and labeled. Up to 31 UTC days per graph.');
+}
+function downloadParameters() {
+  const station = state.parameterStation, metric = state.parameters.metrics.find(m => m.id === state.selection.parameter);
+  const rows = state.table.map(({ stamp, ...row }) => row);
+  const metadata = { schema_version: state.manifest.schema_version, release_id: state.manifest.release_id,
+    parameter_snapshot: state.parameters.snapshot_id, data_kind: state.manifest.data_kind, station_id: station.station_id,
+    source_sha256: station.source_sha256, parameter: metric.id, source_column: metric.source_column,
+    value_interval: 'unspecified', reducer: 'none', sampling_interval_seconds: 3600,
+    selection_time_basis: 'UTC', reporting_utc_offset_hours: station.reporting_utc_offset_hours,
+    start: state.selection.start, end: state.selection.end };
+  const blob = new Blob([csv(rows, metadata)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob), a = node('a'); a.href = url; a.download = `${station.station_id}-${metric.id}-supplied.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function card(title, value, detail) {
@@ -362,6 +451,9 @@ function renderAssessment() {
 }
 
 function render() {
+  if (state.selection?.view === 'parameters') { renderParameters(); return; }
+  $('ex-source-context').textContent = 'ERA5/Oikolab is historical reanalysis at the selected coordinate, not a physical observing station. It is separate from live weather guidance on the homepage.';
+  $('ex-daily-context').hidden = false;
   const s = state.selection, period = baseline();
   $('ex-chart').removeEventListener('idwx-inspect-linked', $('ex-chart')._linkedInspection);
   $('ex-extra').replaceChildren(); $('ex-chart').replaceChildren(); $('ex-chart').onkeydown = null;
@@ -377,6 +469,13 @@ function render() {
 
 $('explorer-filters').addEventListener('submit', event => { event.preventDefault(); if (state.stations) openSelection($('ex-station').value, paramsFromForm()); });
 $('ex-view').addEventListener('change', () => {
+  const previousStation = $('ex-station').value;
+  fillLocations($('ex-view').value, previousStation);
+  if ($('ex-view').value === 'parameters' && state.parameters) {
+    const source = state.parameters.stations.find(s => s.station_id === $('ex-station').value);
+    $('ex-start').value = source.last_utc.slice(0, 7) + '-01'; $('ex-end').value = source.last_utc.slice(0, 10);
+    for (const id of ['ex-start', 'ex-end']) { $(id).min = source.first_utc.slice(0, 10); $(id).max = source.last_utc.slice(0, 10); }
+  }
   if (state.index && ['annual', 'month-compare', 'calendar'].includes($('ex-view').value) && !['annual', 'month-compare', 'calendar'].includes(state.selection.view)) {
     $('ex-start').value = `${years()[0]}-01-01`;
     const last = state.doc.source_coverage.last_date;
@@ -395,14 +494,16 @@ $('ex-view').addEventListener('change', () => {
   visibility();
 });
 $('ex-rain_mode').addEventListener('change', visibility);
+$('ex-parameter').addEventListener('change', visibility);
 for (let i = 1; i <= 3; i++) $('ex-year-' + i).addEventListener('change', () => {
   $('ex-compare').value = [...new Set([1, 2, 3].map(i => $('ex-year-' + i).value).filter(Boolean))].join(',');
 });
 $('ex-station').addEventListener('change', () => openSelection($('ex-station').value, paramsFromForm()));
-$('ex-reset').addEventListener('click', () => openSelection(state.doc.station.station_id, new URLSearchParams()));
+$('ex-reset').addEventListener('click', () => openSelection(state.doc.station.station_id, new URLSearchParams(state.selection?.view === 'parameters' ? 'view=parameters' : '')));
 $('ex-previous').onclick = () => { state.page--; renderTable(); };
 $('ex-next').onclick = () => { state.page++; renderTable(); };
 $('ex-download').onclick = () => {
+  if (state.selection?.view === 'parameters') { downloadParameters(); return; }
   const period = baseline(), s = state.selection;
   const comparison = s.view === 'compare' || s.view === 'precipitation' && ['compare', 'cumulative'].includes(s.rain_mode);
   const metadata = { schema_version: state.manifest.schema_version, release_id: state.manifest.release_id, data_kind: state.manifest.data_kind, station_id: state.doc.station.station_id,
@@ -426,11 +527,17 @@ async function load() {
   controller?.abort(); controller = new AbortController();
   try {
     const manifest = options.client ? await options.client.pin() : await fetchJSON(new URL('data/manifest.json', base), controller.signal, false);
-    if (!['1.1.0', '1.2.0'].includes(manifest.schema_version) || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('This archive does not yet include the data explorer.');
+    if (!['1.1.0', '1.2.0', '2.0.0'].includes(manifest.schema_version) || !/^[a-f0-9]{64}$/.test(manifest.release_id)) throw new Error('This archive does not yet include the data explorer.');
     state.manifest = manifest;
     state.stations = await releaseDocument(manifest.stations_url, controller.signal);
     if (!Array.isArray(state.stations.stations) || !state.stations.stations.length) throw new Error('No stations are available.');
     $('ex-station').replaceChildren(...state.stations.stations.map(s => option(s.station.station_id, s.station.name))); $('ex-station').disabled = false;
+    if (manifest.parameters_url) {
+      if (!/^[a-f0-9]{64}$/.test(manifest.files?.[manifest.parameters_url])) throw new Error('Missing parameter catalog checksum.');
+      state.parameters = validateParameterCatalog(await fetchJSON(releaseURL(manifest.parameters_url, base, manifest.release_id), controller.signal, true, manifest.files[manifest.parameters_url]), manifest);
+      $('ex-parameter').replaceChildren(...state.parameters.metrics.map(m => option(m.id, `${m.label} (${m.unit || 'unit not specified'})`)));
+    }
+    $('ex-view').querySelector('option[value=parameters]').disabled = !state.parameters;
     const params = new URLSearchParams(options.query ?? location.search);
     await openSelection(options.station ?? params.get('station'), params, false);
     options.onReady?.(snapshot());

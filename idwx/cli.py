@@ -46,6 +46,23 @@ app.add_typer(target_app, name="target")
 app.add_typer(feature_app, name="feature")
 
 
+@data_app.command("build-parameters")
+def build_parameters(
+    source_root: Path = typer.Option(..., "--source-root"),  # noqa: B008
+    manifest: Path = typer.Option(Path("configs/climate_sources.yml"), "--manifest"),  # noqa: B008
+    output: Path = typer.Option(Path("data_cache/parameters"), "--output"),  # noqa: B008
+    station: list[str] | None = typer.Option(None, "--station"),  # noqa: B008
+) -> None:
+    """Import existing parameter samples in supplied units; no collection or aggregation."""
+    from idwx.parameter_samples import build_snapshot
+
+    try:
+        result = build_snapshot(manifest, source_root, output, station_ids=station)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(result))
+
+
 @data_app.command("audit-climate")
 def audit_climate(
     source_root: Path = typer.Option(..., "--source-root"),  # noqa: B008
@@ -113,6 +130,7 @@ def export_web(
     baseline_end: int | None = typer.Option(None, "--baseline-end"),
     min_history_years: int = typer.Option(10, "--min-history-years", min=1),
     demo: bool = typer.Option(False, "--demo", help="Export clearly labeled synthetic data without reading weather files."),
+    parameter_snapshot: Path | None = typer.Option(None, "--parameter-snapshot"),  # noqa: B008
 ) -> None:
     """Export historical summaries and immutable JSON/CSV data for the static website."""
     from idwx.web_export import export_web_data
@@ -123,7 +141,8 @@ def export_web(
     cfg = load_config(config)
     try:
         manifest = export_web_data(cfg, load_stations(cfg.stations_file), output,
-                                   baseline=baseline, min_years=min_history_years, demo=demo)
+                                   baseline=baseline, min_years=min_history_years, demo=demo,
+                                   parameter_snapshot=parameter_snapshot)
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps({"release_id": manifest["release_id"], "data_kind": manifest["data_kind"],

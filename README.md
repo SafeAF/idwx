@@ -222,15 +222,22 @@ job is separate from live browser forecasts and uses private input snapshots.
 
 ## Climate workspace implementation
 
-The local explorer supports one to three independently configurable graphs,
-explicit date/location/cursor links, workspace URLs and browser-local workspace
-studies with backup/import and migration of older saved charts. It currently
-uses the existing reviewed Twin Falls temperature, frost and precipitation
-publication. Expanded locations and parameters are not yet published.
+The explorer supports one to three independently configurable graphs, explicit
+links, workspace URLs and browser-local studies with backup/import and migration
+of older saved charts. Alongside the existing daily Twin Falls views, an expanded
+static build includes all 27 source parameters at the 21 allowlisted locations.
+Additional samples keep their supplied values and units; unspecified value
+intervals stay unspecified, with no inferred daily totals or time conversions.
 
-The first increment also adds a pinned 21-location archive manifest, a
-27-parameter metric registry and `idwx data audit-climate --source-root PATH`.
-The full-file audit records coverage and quality without admitting new data or
-changing the deployment database. See [implementation status and evidence](docs/28_MULTILOCATION_IMPLEMENTATION_STATUS.md)
-for findings, verification, the local real-data prototype and remaining phases
-of the [multi-location implementation plan](docs/27_MULTILOCATION_ANALYTICS_IMPLEMENTATION_PLAN.md).
+```sh
+uv run idwx data build-parameters --source-root ~/source/idaho-weather-data/archive
+uv run idwx export-web --parameter-snapshot data_cache/parameters/current --output .tmp/parameter-site
+uv run idwx verify-web .tmp/parameter-site
+```
+
+Choose **Additional parameters · supplied units** in the explorer. See
+[supplied-parameter behavior, verification and refresh configuration](docs/29_PROVIDED_PARAMETER_EXPLORER.md).
+The [first-increment evidence](docs/28_MULTILOCATION_IMPLEMENTATION_STATUS.md)
+and [broader implementation plan](docs/27_MULTILOCATION_ANALYTICS_IMPLEMENTATION_PLAN.md)
+record the remaining derived-analysis work. These are local implementation and
+publication checks; production deployment and native visual acceptance are separate.

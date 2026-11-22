@@ -2,7 +2,9 @@
 
 Status: implementation started, November 21, 2026. The first increment is recorded in
 [implementation status and evidence](28_MULTILOCATION_IMPLEMENTATION_STATUS.md);
-the remaining phases and acceptance gates below remain planned.
+the remaining phases and acceptance gates below remain planned. The subsequent
+[supplied-parameter delivery](29_PROVIDED_PARAMETER_EXPLORER.md) exposes original
+archive samples without requiring inferred time intervals.
 
 Build a polished climate exploration workspace using the existing Idaho archive,
 with all reviewed locations and parameters, stronger analytical tools, and

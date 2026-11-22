@@ -15,12 +15,15 @@ from zoneinfo import ZoneInfo
 
 from idwx.analytics import summarize_daily, validate_daily, validate_policy
 from idwx.history import summarize_events
+from idwx.parameter_samples import validate_snapshot
 from idwx.precipitation import validate_method
 from idwx.web_export import (
     ANALYTICS_WEB_ASSETS,
     EVENT_NAMES,
     GROWING_WEB_ASSETS,
     LEGACY_WEB_ASSETS,
+    PARAMETER_SCHEMA_VERSION,
+    PARAMETER_WEB_ASSETS,
     SCHEMA_VERSION,
     WEB_ASSETS,
     WORKSPACE_WEB_ASSETS,
@@ -91,8 +94,8 @@ def _release_path(root: Path, name: str, release: str) -> Path:
 
 def _inventory(root: Path) -> list[Path]:
     files = []
-    file_pattern = rf"data/{RELEASE_ID}/(?:stations\.json|stations/{STATION_ID}\.json|downloads/frost-history\.csv|analytics/{STATION_ID}/(?:index\.json|summary\.json|daily/\d{{4}}\.json))"
-    directory_pattern = rf"(?:css|js|data|data/{RELEASE_ID}(?:/(?:stations|downloads|analytics(?:/{STATION_ID}(?:/daily)?)?))?)"
+    file_pattern = rf"data/{RELEASE_ID}/(?:parameters/(?:catalog\.json|hourly/{STATION_ID}/\d{{4}}-\d{{2}}\.json)|stations\.json|stations/{STATION_ID}\.json|downloads/frost-history\.csv|analytics/{STATION_ID}/(?:index\.json|summary\.json|daily/\d{{4}}\.json))"
+    directory_pattern = rf"(?:css|js|data|data/{RELEASE_ID}(?:/(?:stations|downloads|parameters(?:/hourly(?:/{STATION_ID})?)?|analytics(?:/{STATION_ID}(?:/daily)?)?))?)"
     for path in root.rglob("*"):
         name = path.relative_to(root).as_posix()
         _require(not path.is_symlink(), f"Publication contains a symlink: {name}")
@@ -104,6 +107,15 @@ def _inventory(root: Path) -> list[Path]:
             files.append(path)
     for asset in (*LEGACY_WEB_ASSETS, "data/manifest.json"):
         _require((root / asset).is_file(), f"Missing publication asset: {asset}")
+    # The same data schema can retain older runtime modules. Validate the
+    # dependencies actually imported by this shell rather than requiring every
+    # newest module in every historical publication.
+    for asset in WEB_ASSETS:
+        if not asset.endswith('.js') or not (root / asset).is_file():
+            continue
+        for reference in re.findall(r"\b(?:from|import)\s*['\"](\./[^'\"\n]+)['\"]", (root / asset).read_text()):
+            dependency = ((root / asset).parent / reference).resolve()
+            _require(dependency.is_relative_to(root) and dependency.is_file(), f'Missing runtime module imported by {asset}: {reference}')
     return files
 
 
@@ -245,7 +257,7 @@ def _analytics(root: Path, station: dict, manifest: dict) -> tuple[dict, set]:
     _require(station["analytics_url"] == f"{prefix}/index.json", "Invalid analytics URL")
     names = {station["analytics_url"], f"{prefix}/summary.json"}
     index = _read_json(_release_path(root, station["analytics_url"], release))
-    _keys(index, COMMON | {"station_id", "years", "summary_url"} | ({"precipitation_method"} if manifest["schema_version"] == SCHEMA_VERSION else set()), "analytics index")
+    _keys(index, COMMON | {"station_id", "years", "summary_url"} | ({"precipitation_method"} if manifest["schema_version"] in {SCHEMA_VERSION, PARAMETER_SCHEMA_VERSION} else set()), "analytics index")
     _common(index, manifest)
     _require(index["station_id"] == sid and index["summary_url"] == f"{prefix}/summary.json", "Analytics station mismatch")
     first = int(station["source_coverage"]["first_date"][:4])
@@ -260,14 +272,14 @@ def _analytics(root: Path, station: dict, manifest: dict) -> tuple[dict, set]:
         _keys(chunk, COMMON | {"station_id", "year", "days"}, "daily analytics")
         _common(chunk, manifest)
         _require(chunk["station_id"] == sid and type(chunk["year"]) is int and chunk["year"] == year, "Daily analytics station/year mismatch")
-        validate_daily(year, chunk["days"], precipitation=manifest["schema_version"] == SCHEMA_VERSION)
+        validate_daily(year, chunk["days"], precipitation=manifest["schema_version"] in {SCHEMA_VERSION, PARAMETER_SCHEMA_VERSION})
         daily[str(year)] = chunk["days"]
     summary = _read_json(_release_path(root, index["summary_url"], release))
-    _keys(summary, COMMON | {"station_id", "months", "years", "policy", "seasons"} | ({"precipitation_method"} if manifest["schema_version"] == SCHEMA_VERSION else set()), "analytics summary")
+    _keys(summary, COMMON | {"station_id", "months", "years", "policy", "seasons"} | ({"precipitation_method"} if manifest["schema_version"] in {SCHEMA_VERSION, PARAMETER_SCHEMA_VERSION} else set()), "analytics summary")
     _common(summary, manifest)
     validate_policy(summary["policy"])
     expected = summarize_daily(daily, summary["policy"])
-    if manifest["schema_version"] == SCHEMA_VERSION:
+    if manifest["schema_version"] in {SCHEMA_VERSION, PARAMETER_SCHEMA_VERSION}:
         validate_method(summary['precipitation_method'], daily)
         _require(index['precipitation_method'] == summary['precipitation_method'], 'Precipitation index/summary mismatch')
         _require(summary['precipitation_method']['review_status'] != 'synthetic_demo' or manifest['data_kind'] == 'synthetic_demo', 'Synthetic precipitation in a real release')
@@ -286,9 +298,9 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     _require(root.is_dir(), "Publication directory does not exist")
     _inventory(root)
     manifest = supplied_manifest if supplied_manifest is not None else _read_json(root / "data/manifest.json")
-    _keys(manifest, COMMON | {"generated_at_utc", "stations_url", "history_csv_url", "source_coverage", "files"}, "manifest")
+    _keys(manifest, COMMON | {"generated_at_utc", "stations_url", "history_csv_url", "source_coverage", "files"} | ({"parameters_url"} if manifest.get("schema_version") == PARAMETER_SCHEMA_VERSION else set()), "manifest")
     release = manifest["release_id"]
-    _require(manifest["schema_version"] in {"1.0.0", "1.1.0", SCHEMA_VERSION} and isinstance(release, str) and re.fullmatch(RELEASE_ID, release), "Unsupported schema or release ID")
+    _require(manifest["schema_version"] in {"1.0.0", "1.1.0", SCHEMA_VERSION, PARAMETER_SCHEMA_VERSION} and isinstance(release, str) and re.fullmatch(RELEASE_ID, release), "Unsupported schema or release ID")
     _require(manifest["data_kind"] in {
         "synthetic_demo", "historical_observations", "historical_reanalysis",
     }, "Unsupported data kind")
@@ -310,7 +322,7 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     documents, ids, expected_files, rows = [], set(), {manifest["stations_url"], manifest["history_csv_url"]}, []
     analytics = []
     if manifest["schema_version"] != "1.0.0":
-        _require(all((root / name).is_file() for name in (GROWING_WEB_ASSETS if manifest["schema_version"] == SCHEMA_VERSION else ANALYTICS_WEB_ASSETS)), "Missing explorer asset")
+        _require(all((root / name).is_file() for name in (GROWING_WEB_ASSETS if manifest["schema_version"] in {SCHEMA_VERSION, PARAMETER_SCHEMA_VERSION} else ANALYTICS_WEB_ASSETS)), "Missing explorer asset")
         if b'js/workspace.js' in (root / 'explore.html').read_bytes():
             _require(all((root / name).is_file() for name in WORKSPACE_WEB_ASSETS), 'Missing workspace asset')
     for entry in index["stations"]:
@@ -334,8 +346,17 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
             for name in (*EVENT_NAMES, "interval"):
                 row.update({f"{name}_{key}": value for key, value in record[name].items()})
             rows.append({key: "" if value is None else str(value) for key, value in row.items()})
+    parameter_catalog = None
+    sample_names = set()
+    if manifest['schema_version'] == PARAMETER_SCHEMA_VERSION:
+        _require(manifest['parameters_url'] == f'data/{release}/parameters/catalog.json', 'Invalid parameter catalog URL')
+        _require(all((root / name).is_file() for name in PARAMETER_WEB_ASSETS), 'Missing parameter runtime asset')
+        parameter_catalog = validate_snapshot(_release_path(root, manifest['parameters_url'], release).parent, allow_demo=allow_demo)
+        _require(parameter_catalog['data_kind'] == manifest['data_kind'], 'Parameter data kind mismatch')
+        expected_files.add(manifest['parameters_url'])
+        sample_names = {f'data/{release}/parameters/{entry["path"]}' for station in parameter_catalog['stations'] for entry in station['months']}
     actual_files = {path.relative_to(root).as_posix() for path in (root / "data" / release).rglob("*") if path.is_file()}
-    _require(expected_files == set(manifest["files"]) == actual_files, "Release inventory/checksum references disagree")
+    _require(expected_files == set(manifest["files"]) and expected_files | sample_names == actual_files, "Release inventory/checksum references disagree")
     with (root / manifest["history_csv_url"]).open(encoding="utf-8", newline="") as stream:
         reader = csv.DictReader(stream)
         _require(reader.fieldnames is not None and len(reader.fieldnames) == len(set(reader.fieldnames))
@@ -347,6 +368,8 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
     identity["stations"] = documents
     if manifest["schema_version"] != "1.0.0":
         identity["analytics"] = analytics
+    if parameter_catalog:
+        identity['parameter_snapshot'] = parameter_catalog['snapshot_id']
     content = (json.dumps(identity, allow_nan=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     _require(hashlib.sha256(content).hexdigest() == release, "Release ID disagrees with canonical content")
     projection_included = (
@@ -361,7 +384,10 @@ def _verify_release(directory: Path, *, allow_demo: bool, supplied_manifest: dic
             and b"gfs_seamless" in (root / "js/forecast.js").read_bytes()
             and b"ecmwf_ifs025" in (root / "js/forecast.js").read_bytes(),
             "data_explorer_included": manifest["schema_version"] != "1.0.0",
-            "temperature_climatology_included": all("temperature_climatology" in document for document in documents)}
+            "temperature_climatology_included": all("temperature_climatology" in document for document in documents),
+            **({'parameter_locations': len(parameter_catalog['stations']), 'provided_parameters': len(parameter_catalog['metrics']),
+                'parameter_samples': sum(s['count'] for s in parameter_catalog['stations']),
+                'parameter_snapshot': parameter_catalog['snapshot_id']} if parameter_catalog else {})}
 
 
 def verify_web(directory: Path, *, allow_demo: bool = False) -> dict:
@@ -386,6 +412,9 @@ def verify_web(directory: Path, *, allow_demo: bool = False) -> dict:
                             history_csv_url=f"data/{release.name}/downloads/frost-history.csv",
                             source_coverage={"first_date": min(item["first_date"] for item in coverage),
                                              "last_date": max(item["last_date"] for item in coverage)})
+            if previous['schema_version'] == PARAMETER_SCHEMA_VERSION:
+                previous['parameters_url'] = f'data/{release.name}/parameters/catalog.json'
+                previous['files'] = {name: sha for name, sha in files.items() if '/parameters/hourly/' not in name}
             _verify_release(root, allow_demo=allow_demo, supplied_manifest=previous)
             retained += 1
         return {**result, "retained_releases_verified": retained}

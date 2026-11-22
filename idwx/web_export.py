@@ -20,15 +20,18 @@ from idwx.analytics import metric_policy, public_daily, summarize_daily
 from idwx.config import Config, StationMeta
 from idwx.frost import frost_rows, validated_daily
 from idwx.history import summarize_events
+from idwx.parameter_samples import copy_chunks, encoded, validate_snapshot
 from idwx.precipitation import attach_precipitation
 from idwx.sqlite_store import load_daily_from_sqlite
 
 SCHEMA_VERSION = "1.2.0"
+PARAMETER_SCHEMA_VERSION = "2.0.0"
 LEGACY_WEB_ASSETS = ("index.html", "css/styles.css", "js/app.js", "js/charts.js", "js/forecast.js", "js/format.js")
 ANALYTICS_WEB_ASSETS = (*LEGACY_WEB_ASSETS, "explore.html", "js/analytics.js", "js/explorer.js", "js/explorer-charts.js")
 GROWING_WEB_ASSETS = (*ANALYTICS_WEB_ASSETS, "js/growing.js")
 WORKSPACE_WEB_ASSETS = ("js/data-client.js", "js/workspace-state.js", "js/workspace.js")
-WEB_ASSETS = (*GROWING_WEB_ASSETS, *WORKSPACE_WEB_ASSETS)
+PARAMETER_WEB_ASSETS = ("js/parameter-samples.js",)
+WEB_ASSETS = (*GROWING_WEB_ASSETS, *WORKSPACE_WEB_ASSETS, *PARAMETER_WEB_ASSETS)
 EVENT_NAMES = ("last_spring_frost", "first_fall_frost")
 NOTICE = (
     "Temperature-based freeze dates are a proxy for frost risk. Surface frost and crop damage "
@@ -194,7 +197,8 @@ def demo_daily(station_id: str) -> pd.DataFrame:
 
 def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
                     baseline: tuple[int, int] | None = None, min_years: int = 10,
-                    demo: bool = False) -> dict:
+                    demo: bool = False, parameter_snapshot: Path | None = None,
+                    reuse_parameters: Path | None = None) -> dict:
     """Calculate from daily caches, then publish data without trusting stale target caches."""
     if not stations:
         raise ValueError("At least one configured station is required")
@@ -203,6 +207,10 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
         raise ValueError("Configured station IDs must be unique lowercase snake_case identifiers")
     if len(set(cfg.frost_thresholds_c)) != len(cfg.frost_thresholds_c):
         raise ValueError("Frost thresholds must be unique")
+    snapshot_path = parameter_snapshot or cfg.parameter_snapshot
+    if snapshot_path:
+        snapshot_path = snapshot_path.resolve(strict=True)
+    snapshot = validate_snapshot(snapshot_path, allow_demo=demo) if snapshot_path else None
     documents = []
     analytics = []
     data_kinds = set()
@@ -231,8 +239,13 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
     if len(data_kinds) != 1:
         raise ValueError("All exported stations must use the same data kind")
     kind = data_kinds.pop()
-    common = {"schema_version": SCHEMA_VERSION, "data_kind": kind, "methodology": NOTICE}
-    identity = hashlib.sha256(_json({**common, "stations": documents, "analytics": analytics})).hexdigest()
+    if snapshot and snapshot['data_kind'] != kind:
+        raise ValueError('Parameter samples and historical products have different data kinds')
+    common = {"schema_version": PARAMETER_SCHEMA_VERSION if snapshot else SCHEMA_VERSION, "data_kind": kind, "methodology": NOTICE}
+    contents = {**common, "stations": documents, "analytics": analytics}
+    if snapshot:
+        contents['parameter_snapshot'] = snapshot['snapshot_id']
+    identity = hashlib.sha256(_json(contents)).hexdigest()
     release_id = identity  # Full content hash avoids mutable release paths.
     common = {**common, "release_id": release_id}
     root = f"data/{release_id}"
@@ -243,6 +256,10 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
         "downloads/frost-history.csv": _csv(documents, common),
         **{f"stations/{d['station']['station_id']}.json": _json({**common, **d, "analytics_url": f"{root}/analytics/{d['station']['station_id']}/index.json"}) for d in documents},
     }
+    sample_files = set()
+    if snapshot:
+        files['parameters/catalog.json'] = encoded(snapshot)
+        sample_files = {f'parameters/{entry["path"]}' for station in snapshot['stations'] for entry in station['months']}
     for bundle in analytics:
         sid = bundle["station_id"]
         prefix = f"analytics/{sid}"
@@ -264,14 +281,25 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
         },
         "files": {f"{root}/{name}": hashlib.sha256(content).hexdigest() for name, content in files.items()},
     }
+    if snapshot:
+        manifest['parameters_url'] = f'{root}/parameters/catalog.json'
     data_dir = Path(output) / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     release_dir = data_dir / release_id
+    previous_manifest = data_dir / 'manifest.json'
+    if snapshot and reuse_parameters is None and previous_manifest.is_file():
+        previous_id = json.loads(previous_manifest.read_text()).get('release_id')
+        if isinstance(previous_id, str) and re.fullmatch(r'[a-f0-9]{64}', previous_id):
+            candidate = data_dir / previous_id / 'parameters'
+            if candidate.is_dir() and not candidate.is_symlink() and candidate.resolve().is_relative_to(data_dir.resolve()):
+                reuse_parameters = candidate
     if release_dir.exists():
         actual_files = {p.relative_to(release_dir).as_posix() for p in release_dir.rglob("*") if p.is_file()}
-        if actual_files != set(files) or any((release_dir / name).read_bytes() != content
+        if actual_files != set(files) | sample_files or any((release_dir / name).read_bytes() != content
                for name, content in files.items()):
             raise ValueError("Existing immutable release differs from expected contents")
+        if snapshot and validate_snapshot(release_dir / 'parameters', allow_demo=demo) != snapshot:
+            raise ValueError('Existing immutable parameter release differs')
     else:
         with tempfile.TemporaryDirectory(prefix=".staging-", dir=data_dir) as stage:
             staged = Path(stage) / release_id
@@ -279,6 +307,8 @@ def export_web_data(cfg: Config, stations: list[StationMeta], output: Path,
                 destination = staged / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(content)
+            if snapshot:
+                copy_chunks(snapshot_path, staged / 'parameters', snapshot, reuse=reuse_parameters)
             os.replace(staged, release_dir)
     # The manifest changes only after the complete immutable release exists.
     with tempfile.TemporaryDirectory(prefix=".manifest-", dir=data_dir) as stage:

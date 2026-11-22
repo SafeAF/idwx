@@ -18,7 +18,7 @@ export function validateChunk(doc, station, year) {
   if (doc.station_id !== station || doc.year !== year || !Array.isArray(doc.days) || doc.days.length !== expected / 86400000) throw new Error('Invalid daily archive.');
   doc.days.forEach((row, i) => {
     const date = new Date(Date.UTC(year, 0, 1 + i)).toISOString().slice(0, 10);
-    if (doc.schema_version === '1.2.0' && !validatePrecipitation(row)) throw new Error('Invalid precipitation coverage.');
+    if (['1.2.0', '2.0.0'].includes(doc.schema_version) && !validatePrecipitation(row)) throw new Error('Invalid precipitation coverage.');
     if (row.date !== date || !['valid', 'invalid_temperature', 'missing_record'].includes(row.status) ||
         !Object.keys(METRICS).every(key => row[key] === null || finite(row[key])) ||
         (row.status === 'valid') !== Object.keys(METRICS).every(key => finite(row[key])) ||

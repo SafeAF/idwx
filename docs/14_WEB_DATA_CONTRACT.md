@@ -371,3 +371,29 @@ unknown yields `insufficient_data`; only all required checks met yields
 `requirements_met`. It adds no soil-fertility score, crop/yield prediction,
 irrigation estimate, or new model output. Versions 1.0.0 and 1.1.0 retain their
 original contracts and may coexist as immutable retained releases.
+
+
+## Schema 2.0.0: supplied parameter samples
+
+Expanded builds retain the daily/frost structures of 1.2.0 and add
+`parameters_url`, pinned under `data/<release-id>/parameters/catalog.json`.
+The top-level release identity additionally binds `parameter_snapshot`, the
+catalog's `snapshot_id`. The manifest hashes the catalog; the catalog hashes
+every normalized monthly file. Leaf files are covered transitively rather than
+repeating thousands of hashes in the top manifest.
+
+The `idwx.parameter-samples.1` catalog identifies source coordinates, source
+SHA-256, fixed reporting offset, UTC endpoints and counts, original column/unit
+strings, screening bounds, per-field quality and ordered monthly file references.
+Each monthly matrix has a UTC start, one-hour sampling cadence, ordered
+`metric_ids`, and numeric/null rows. Sampling cadence is separate from the
+parameter's `value_interval`, which remains null. `reducer` is `none`.
+Finite out-of-screening-range values remain unchanged; missing values remain
+null. No pressure/fraction/radiation/snow conversion or accumulation is inferred.
+
+The verifier recomputes sample coverage, summary counts and extrema, enforces
+field/path allowlists and identities, and checks every leaf digest. The browser
+checks catalog and monthly bytes against pinned SHA-256 values before use.
+Additional fields do not replace the existing daily Twin Falls inputs. See
+[behavior and verification](29_PROVIDED_PARAMETER_EXPLORER.md) for the bounded
+UTC explorer, original-unit CSV contract and required updater snapshot pin.

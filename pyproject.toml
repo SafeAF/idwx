@@ -41,6 +41,7 @@ packages = ["idwx"]
 "web/js/data-client.js" = "idwx/web_assets/js/data-client.js"
 "web/js/workspace-state.js" = "idwx/web_assets/js/workspace-state.js"
 "web/js/workspace.js" = "idwx/web_assets/js/workspace.js"
+"web/js/parameter-samples.js" = "idwx/web_assets/js/parameter-samples.js"
 
 [dependency-groups]
 dev = [

@@ -36,6 +36,7 @@ class Config:
     station_windows: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     database_path: Path | None = None
     precipitation_archives: dict[str, Path] = field(default_factory=dict)
+    parameter_snapshot: Path | None = None
 
 
 DEFAULT_WINDOWS = {
@@ -79,6 +80,7 @@ def load_config(path: str | Path) -> Config:
         station_windows=raw.get("station_windows", {}),
         database_path=database_path,
         precipitation_archives={sid: _as_repo_path(value) for sid, value in raw.get("precipitation_archives", {}).items()},
+        parameter_snapshot=_as_repo_path(raw['parameter_snapshot']) if raw.get('parameter_snapshot') else None,
     )
 
 

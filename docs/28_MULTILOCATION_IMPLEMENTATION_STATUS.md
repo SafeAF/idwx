@@ -1,5 +1,9 @@
 # Climate workspace implementation status
 
+The evidence below records the November 21 increment. The November 22
+[supplied-parameter delivery](29_PROVIDED_PARAMETER_EXPLORER.md) adds all 27
+parameters and 21 locations in original units, plus the expanded static contract.
+
 November 21, 2026 (America/Denver). Base: `main` at
 `086489e7dc990a761ca3b64fb651e97fb7ea17f0`.
 

@@ -22,6 +22,7 @@ import pandas as pd
 
 from idwx.config import load_config, load_stations
 from idwx.oikolab import era5_available_end, fetch_era5_hourly_csv
+from idwx.parameter_samples import validate_snapshot
 from idwx.precipitation import extend_archive, load_archive
 from idwx.sqlite_store import refresh_sqlite_database
 from idwx.web_export import export_web_data
@@ -123,6 +124,13 @@ def update(config: Path, root: Path, *, api_key: str, source_revision: str,
         if not api_key.strip():
             raise ValueError('OIKOLAB_API_KEY is required for scheduled refresh')
         cfg = load_config(config)
+        active_manifest = json.loads((previous / 'data/manifest.json').read_text())
+        if active_manifest.get('parameters_url') and cfg.parameter_snapshot is None:
+            raise ValueError('Active site includes parameter samples; configure its pinned parameter_snapshot before refreshing')
+        if cfg.parameter_snapshot:
+            cfg = replace(cfg, parameter_snapshot=cfg.parameter_snapshot.resolve(strict=True))
+        parameters = validate_snapshot(cfg.parameter_snapshot) if cfg.parameter_snapshot else None
+        parameter_id = parameters['snapshot_id'] if parameters else None
         stations = load_stations(cfg.stations_file)
         if len(stations) != 1 or stations[0].station_id != 'twin_falls':
             raise ValueError('Scheduled update is restricted to Twin Falls')
@@ -141,7 +149,7 @@ def update(config: Path, root: Path, *, api_key: str, source_revision: str,
             return (value.date() if value.hour == 23 else value.date() - timedelta(days=1)).isoformat()
         need_fetch = not complete or last_date < last_complete(temp_end) or _precip_end(archive) < last_complete(rain_end)
         old_receipt = json.loads((old_state / 'receipt.json').read_text()) if old_state else {}
-        if not need_fetch and old_receipt.get('source_revision') == source_revision and old_receipt.get('release_id') == active['release_id']:
+        if not need_fetch and old_receipt.get('source_revision') == source_revision and old_receipt.get('release_id') == active['release_id'] and old_receipt.get('parameter_snapshot') == parameter_id:
             return {'status': 'already_current', 'last_complete_date': last_date,
                     'precipitation_last_complete_date': _precip_end(archive),
                     'era5_available_end_utc': available.isoformat(), 'release_id': active['release_id']}
@@ -185,10 +193,12 @@ def update(config: Path, root: Path, *, api_key: str, source_revision: str,
             # avoid duplicating every older release in each new build.
             shutil.copytree(previous / 'data', build / 'data', copy_function=os.link,
                             ignore=lambda directory, names: ['manifest.json'] if Path(directory) == previous / 'data' else [])
-            export_web_data(effective, stations, build)
+            export_web_data(effective, stations, build,
+                            reuse_parameters=build / 'data' / active['release_id'] / 'parameters' if parameters else None)
             report = verify_web(build)
             _public_permissions(build)
             receipt = {'status': 'published', 'run_id': run_id, 'source_revision': source_revision,
+                       'parameter_snapshot': parameter_id,
                        'release_id': report['release_id'], 'previous_build': str(previous),
                        'build': str(build), 'previous_state': str(old_state) if old_state else None,
                        'last_complete_date': updated_date, 'precipitation_last_complete_date': _precip_end(archive),

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -18,7 +19,25 @@ from dataclasses import replace
 import sys
 from idwx.config import load_config,StationMeta
 from idwx.web_export import export_web_data
-export_web_data(replace(load_config('configs/idaho.yml'),backtest={'start_year':2000,'end_year':2022}),[StationMeta('demo','Demo')],Path(sys.argv[1]),demo=True)
+import tempfile, csv, hashlib, yaml
+import pandas as pd
+from idwx.climate_metrics import METRICS
+from idwx.parameter_samples import build_snapshot
+with tempfile.TemporaryDirectory(dir='.tmp') as private:
+    private=Path(private); raw=private/'raw'; raw.mkdir(); sources=[]
+    for sid,lat in [('demo',42.4634),('archive_point',43.0)]:
+        source=raw/(str(lat)+'--114.4975-test.csv')
+        values={m.column:(m.minimum+m.maximum)/2 for m in METRICS.values()}
+        values.update({'surface_pressure (Pa)':91000.5,'surface_solar_radiation (W/m^2)':123.45,'relative_humidity (0-1)':1.72})
+        rows=[{'timestamp':str(stamp),'coordinates (lat,lon)':str((lat,-114.4975)),'model (name)':'era5','model elevation (surface)':1300,'utc_offset (hrs)':-7,**values} for stamp in pd.date_range('2020-02-28','2020-03-01T23:00',freq='h')]
+        rows[1]['surface_pressure (Pa)']=''
+        with source.open('w',newline='') as stream:
+            writer=csv.DictWriter(stream,fieldnames=list(rows[0])); writer.writeheader(); writer.writerows(rows)
+        sources.append({'station_id':sid,'file':source.name,'latitude':lat,'longitude':-114.4975,'name':sid,'label_status':'coordinate_label','reporting_utc_offset_hours':-7,'model':'era5','sha256':hashlib.sha256(source.read_bytes()).hexdigest()})
+    manifest=private/'sources.yml'
+    manifest.write_text(yaml.safe_dump({'version':1,'adapter':'oikolab_era5_archive_v1','timestamp_convention':'naive_utc','start_utc':'2020-02-28T00:00:00Z','end_utc':'2020-03-01T23:00:00Z','sources':sources}))
+    snapshot=build_snapshot(manifest,raw,private/'snapshots',data_kind='synthetic_demo')
+    export_web_data(replace(load_config('configs/idaho.yml'),backtest={'start_year':2000,'end_year':2022}),[StationMeta('demo','Demo')],Path(sys.argv[1]),demo=True,parameter_snapshot=Path(snapshot['path']))
 `, fixture], { cwd: root });
 after(() => rmSync(fixture, { recursive: true }));
 const files = new Map();
@@ -42,6 +61,8 @@ async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route, 
   const dom = new JSDOM(html, { url: 'https://idwx.test/almanac/explore.html' + query, runScripts: 'outside-only', virtualConsole: console });
   t.after(() => { dom.window.close(); assert.deepEqual(errors, []); });
   const { window } = dom;
+  Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle });
+  window.TextEncoder = TextEncoder;
   if (savedStudies !== undefined) window.localStorage.setItem('idwx.weather-studies.v1', savedStudies);
   if (savedWorkspaces !== undefined) window.localStorage.setItem('idwx.weather-studies.v2', savedWorkspaces);
   window.Blob = Blob;
@@ -51,7 +72,7 @@ async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route, 
   window.fetch = async (url, options) => {
     const parsed = new URL(url); requests.push(parsed.pathname);
     const response = route && await route(parsed, options); if (response) return response;
-    return { ok: files.has(parsed.pathname), status: files.has(parsed.pathname) ? 200 : 404, json: async () => JSON.parse(files.get(parsed.pathname)) };
+    return { ok: files.has(parsed.pathname), status: files.has(parsed.pathname) ? 200 : 404, json: async () => JSON.parse(files.get(parsed.pathname)), text: async () => files.get(parsed.pathname) };
   };
   const context = dom.getInternalVMContext(), modules = new Map();
   function moduleFor(url) {
@@ -470,4 +491,78 @@ test('workspace URLs restore all cards and missing saved locations fail within t
   assert.equal(failed.$('explorer-results').hidden, false);
   assert.equal(failedCards[1].querySelector('[id$="explorer-results"]').hidden, true);
   assert.match(failedCards[1].querySelector('[id$="explorer-status"]').textContent, /unavailable/);
+});
+
+test('all 27 supplied parameters are selectable with original units and no inferred interval', async t => {
+  const { $, apply, requests, blobs } = await explorer(t, { query: '?view=parameters&station=demo&parameter=surface_pressure&start=2020-02-28&end=2020-03-01' });
+  assert.equal($('ex-parameter').options.length, 27);
+  assert.match($('ex-description').textContent, /Pa.*interval is unspecified/);
+  assert.match($('ex-table-body').textContent, /91000.5/);
+  assert.equal($('ex-unit').closest('label').hidden, true);
+  assert.equal($('ex-table-body').children.length, 72);
+  assert.equal(requests.filter(path => path.includes('/parameters/hourly/')).length, 2);
+  $('ex-download').click(); const pressure = await [...blobs.values()].at(-1).text();
+  assert.match(pressure, /"91000.5","Pa"/); assert.match(pressure, /"unspecified","none","3600"/);
+  assert.equal(pressure.trim().split('\r\n').length, 73);
+  await apply({ view: 'parameters', parameter: 'surface_solar_radiation' });
+  assert.match($('ex-table-body').textContent, /123.45W\/m\^2/);
+  assert.doesNotMatch($('ex-table-body').textContent, /MJ/);
+  await apply({ parameter: 'relative_humidity' });
+  assert.match($('ex-table-body').textContent, /1.720-1outside_screening_range_as_supplied/);
+  $('ex-download').click(); assert.match(await [...blobs.values()].at(-1).text(), /"1.72","0-1","outside_screening_range_as_supplied"/);
+  for (const option of [...$('ex-parameter').options]) {
+    await apply({ view: 'parameters', parameter: option.value });
+    assert.equal($('explorer-results').hidden, false, option.value);
+    assert.equal($('ex-table-body').children.length, 72);
+  }
+  assert.equal($('ex-mark').value, 'scatter'); // Direction cannot imply a wraparound line average.
+});
+
+test('parameter graphs are independent across archive locations and workspace backups retain them', async t => {
+  const { $, window, apply } = await explorer(t, { workspaceMode: true, query: '?view=parameters&station=demo&parameter=surface_solar_radiation&start=2020-02-28&end=2020-03-01' });
+  $('workspace-add').click();
+  const cards = () => [...window.document.querySelectorAll('.graph-card')];
+  await settle(() => cards().length === 2 && !cards()[1].querySelector('[id$="explorer-results"]').hidden);
+  const other = cards()[1];
+  other.querySelector('[id$="ex-station"]').value = 'archive_point';
+  other.querySelector('[id$="ex-parameter"]').value = 'snow_depth';
+  other.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await settle(() => other.querySelector('[id$="ex-title"]').textContent.includes('Snow water') && !other.querySelector('[id$="explorer-results"]').hidden);
+  assert.equal($('ex-parameter').value, 'surface_solar_radiation');
+  assert.match(other.querySelector('[id$="ex-description"]').textContent, /mm of water equivalent/);
+  $('workspace-save').click();
+  const saved = JSON.parse(window.localStorage.getItem('idwx.weather-studies.v2')).studies[0].workspace;
+  assert.equal(new URLSearchParams(saved.graphs[1].query).get('parameter'), 'snow_depth');
+  assert.equal(saved.graphs[1].station, 'archive_point');
+  await apply({ view: 'temperature' });
+  assert.match($('ex-title').textContent, /Temperature/);
+  assert.equal($('ex-unit').closest('label').hidden, false);
+  assert.equal(other.querySelector('[id$="ex-view"]').value, 'parameters');
+});
+
+test('modified parameter samples fail checksum validation and retry can recover original values', async t => {
+  let corrupt = true;
+  const { $, window } = await explorer(t, { workspaceMode: true, query: '?view=parameters&station=demo&parameter=surface_pressure&start=2020-02-28&end=2020-02-29', route: parsed => {
+    if (corrupt && parsed.pathname.endsWith('/parameters/hourly/demo/2020-02.json')) {
+      const doc = JSON.parse(files.get(parsed.pathname)); doc.values[0][doc.metric_ids.indexOf('surface_pressure')] = 1;
+      return { ok: true, text: async () => JSON.stringify(doc), json: async () => doc };
+    }
+  } });
+  assert.equal($('explorer-results').hidden, true); assert.match($('explorer-status').textContent, /checksum mismatch/);
+  corrupt = false; $('explorer-retry').click();
+  await settle(() => !$('explorer-results').hidden);
+  assert.match($('ex-table-body').textContent, /91000.5/);
+  assert.equal(window.document.querySelectorAll('.graph-card').length, 1);
+});
+
+test('parameter presets keep archive-only locations and supplied-value semantics', async t => {
+  const { $, window } = await explorer(t, { workspaceMode: true, query: '?view=parameters&station=archive_point&parameter=surface_pressure&start=2020-02-28&end=2020-03-01' });
+  $('workspace-preset').value = 'temperature';
+  $('workspace-preset').dispatchEvent(new window.Event('change'));
+  const cards = () => [...window.document.querySelectorAll('.graph-card')];
+  await settle(() => cards().length === 3 && cards().every(card => !card.querySelector('[id$="explorer-results"]').hidden));
+  assert.deepEqual(cards().map(card => card.querySelector('[id$="ex-parameter"]').value), ['temperature', 'soil_temperature_level_1', 'dewpoint_temperature']);
+  assert.ok(cards().every(card => card.querySelector('[id$="ex-station"]').value === 'archive_point'));
+  assert.ok(cards().every(card => card.querySelector('[id$="ex-view"]').value === 'parameters'));
+  assert.match($('workspace-status').textContent, /original units/);
 });

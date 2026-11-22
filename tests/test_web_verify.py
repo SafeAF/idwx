@@ -221,6 +221,9 @@ def test_old_schema_12_asset_set_remains_verifiable(publication):
     _, _, root, manifest = publication
     page = root / 'explore.html'
     page.write_text(page.read_text().replace('js/workspace.js', 'js/explorer.js'))
+    # Represent the retained pre-workspace module's dependency set; newer
+    # standalone card code also imports the shared client and parameter reader.
+    (root / 'js/explorer.js').write_text("import './analytics.js';\nimport './explorer-charts.js';\n")
     for asset in WORKSPACE_WEB_ASSETS:
         (root / asset).unlink()
     assert verify_web(root, allow_demo=True)['release_id'] == manifest['release_id']
@@ -229,5 +232,5 @@ def test_old_schema_12_asset_set_remains_verifiable(publication):
 def test_workspace_html_requires_all_new_runtime_modules(publication):
     _, _, root, _ = publication
     (root / 'js/data-client.js').unlink()
-    with pytest.raises(ValueError, match='Missing workspace asset'):
+    with pytest.raises(ValueError, match='Missing workspace asset|Missing runtime module'):
         verify_web(root, allow_demo=True)

@@ -38,11 +38,15 @@ function updateLayout() {
 async function changed(card, value) {
   if (restoring) return;
   card.initial = value; card.title.textContent = card.api?.elements.get('ex-title').textContent || 'Historical graph';
-  card.subtitle.textContent = `${value.station} · ${new URLSearchParams(value.query).get('metric')} · independently configurable`;
+  card.subtitle.textContent = `${value.station} · ${new URLSearchParams(value.query).get('parameter') || new URLSearchParams(value.query).get('metric')} · independently configurable`;
   const updates = [];
   for (const other of cards) if (other !== card && other.api.snapshot()) {
     const result = linkedSelection(other.api.snapshot(), value, links);
     if (result.reason) say(result.reason);
+    if (links.location && ![...other.api.elements.get('ex-station').options].some(option => option.value === value.station)) {
+      result.value.station = other.api.snapshot().station;
+      say('This location is available for supplied parameters but not for the other graph’s daily products. Its location stays independent.');
+    }
     if (JSON.stringify(result.value) !== JSON.stringify(other.api.snapshot())) updates.push(other.api.setSelection(result.value, false));
   }
   await Promise.allSettled(updates);
@@ -86,7 +90,7 @@ layoutSelect.onchange = () => { layout = layoutSelect.value; updateLayout(); wri
 const linkGroup = el('fieldset', undefined, 'workspace-links'); linkGroup.append(el('legend', 'Link graphs'));
 for (const [key, text] of [['dates', 'Date range'], ['location', 'Location'], ['cursor', 'Inspection cursor']]) {
   const label = el('label'), input = el('input'); input.type = 'checkbox'; input.id = `workspace-link-${key}`;
-  input.onchange = () => { links[key] = input.checked; writeURL(); say(key === 'cursor' ? 'Inspection links exact matching daily dates or calendar month/day positions; unsupported views stay independent.' : 'Links apply to subsequent edits. Each graph retains its own settings.'); };
+  input.onchange = () => { links[key] = input.checked; writeURL(); say(key === 'cursor' ? 'Inspection links matching UTC sample timestamps, daily dates, or calendar month/day positions. Unsupported combinations stay independent.' : 'Links apply to subsequent edits. Each graph retains its own settings.'); };
   label.append(input, document.createTextNode(' ' + text)); linkGroup.append(label);
 }
 const check = button('Check for new data', async () => {
@@ -99,12 +103,15 @@ for (const [value, text] of [['', 'Choose a preset'], ['temperature', 'Three tem
 }
 preset.onchange = async () => {
   const source = cards[0]?.api.snapshot(); if (!source || !preset.value) return;
-  const settings = new URLSearchParams(source.query); settings.set('view', 'temperature');
-  const selections = preset.value === 'temperature' ? ['tmin_c', 'tmean_c', 'tmax_c'].map(metric => {
+  const settings = new URLSearchParams(source.query), supplied = settings.get('view') === 'parameters';
+  if (!supplied) settings.set('view', 'temperature');
+  const selections = supplied ? (preset.value === 'temperature' ? ['temperature', 'soil_temperature_level_1', 'dewpoint_temperature'] : ['temperature', 'total_precipitation']).map(parameter => {
+    const params = new URLSearchParams(settings); params.set('parameter', parameter); return { station: source.station, query: params.toString() };
+  }) : preset.value === 'temperature' ? ['tmin_c', 'tmean_c', 'tmax_c'].map(metric => {
     const params = new URLSearchParams(settings); params.set('metric', metric); return { station: source.station, query: params.toString() };
   }) : [{ station: source.station, query: settings.toString() }, { station: source.station, query: 'view=precipitation' }];
   await restore(workspace({ version: 2, graphs: selections }), true);
-  say(preset.value === 'temperature' ? 'Three independent temperature selections. Each card emphasizes a different series.' : 'Temperature and total water equivalent use independently reviewed coverage dates.');
+  say(supplied ? 'Independent supplied-value graphs use the same UTC selection and their original units. No aggregation is inferred.' : preset.value === 'temperature' ? 'Three independent temperature selections. Each card emphasizes a different series.' : 'Temperature and total water equivalent use independently reviewed coverage dates.');
   preset.value = '';
 };
 presetLabel.append(preset);
@@ -200,5 +207,6 @@ try {
   const stored = workspaceFromURL(new URL(location.href));
   if (stored) await restore(stored);
   else { const card = addCard(null, { primary: true }); await card.api.ready; }
+  $('parameters-shortcut').hidden = !client.manifest?.parameters_url;
   renderStudies();
 } catch (error) { say(error.message); if (!cards.length) addCard(null, { primary: true }); }

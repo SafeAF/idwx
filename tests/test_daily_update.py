@@ -1,5 +1,6 @@
 """Publishing must preserve both live bytes and refresh state on failure."""
 import hashlib
+import json
 import shutil
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -158,3 +159,64 @@ def test_another_publisher_holding_lock_prevents_a_second_run(deployment):
         with pytest.raises(BlockingIOError):
             run(deployment)
     assert (root / 'current').resolve() == previous
+
+
+def test_missing_pinned_parameter_snapshot_preserves_expanded_site(monkeypatch, deployment):
+    root, previous, _config = deployment
+    manifest = json.loads((previous / 'data/manifest.json').read_text())
+    manifest['parameters_url'] = 'declares-existing-parameter-archive'
+    # Test the publication envelope before contacting any provider. The full
+    # package/snapshot contract is exercised separately in test_parameter_samples.
+    monkeypatch.setattr(job, 'verify_web', lambda path: {'release_id': manifest['release_id']})
+    (previous / 'data/manifest.json').write_text(json.dumps(manifest))
+    def fail(*args): pytest.fail('A missing archive pin must stop before provider access')
+    monkeypatch.setattr(job, 'era5_available_end', fail)
+    with pytest.raises(ValueError, match='pinned parameter_snapshot'):
+        run(deployment)
+    assert (root / 'current').resolve() == previous
+    assert not (root / 'automation/state/current').exists()
+
+
+def test_refresh_retains_all_parameter_locations_and_skips_only_with_same_pin(monkeypatch, deployment, tmp_path):
+    import csv
+
+    from idwx.climate_metrics import METRICS
+    from idwx.parameter_samples import build_snapshot, read_json
+
+    raw_root = tmp_path / 'raw-parameters'; raw_root.mkdir()
+    sources = []
+    values = {m.column: (m.minimum + m.maximum) / 2 for m in METRICS.values()}
+    for sid, lat in [('twin_falls', 42.4634), ('archive_point', 43.0)]:
+        source = raw_root / f'{lat}--114.4975-test.csv'
+        rows = [{'timestamp': f'2000-01-01 {h:02}:00:00', 'coordinates (lat,lon)': str((lat, -114.4975)),
+                 'model (name)': 'era5', 'model elevation (surface)': 1300, 'utc_offset (hrs)': -7, **values} for h in range(4)]
+        with source.open('w', newline='') as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(rows[0])); writer.writeheader(); writer.writerows(rows)
+        sources.append({'station_id': sid, 'file': source.name, 'latitude': lat, 'longitude': -114.4975,
+                        'name': sid, 'label_status': 'coordinate_label', 'reporting_utc_offset_hours': -7,
+                        'model': 'era5', 'sha256': hashlib.sha256(source.read_bytes()).hexdigest()})
+    manifest = tmp_path / 'sources.yml'
+    manifest.write_text(yaml.safe_dump({'version': 1, 'adapter': 'oikolab_era5_archive_v1', 'timestamp_convention': 'naive_utc',
+                                      'start_utc': '2000-01-01T00:00:00Z', 'end_utc': '2000-01-01T03:00:00Z', 'sources': sources}))
+    snapshot = build_snapshot(manifest, raw_root, tmp_path / 'parameter-cache')
+    root, previous, config = deployment
+    settings = yaml.safe_load(config.read_text()); settings['parameter_snapshot'] = snapshot['path']; config.write_text(yaml.safe_dump(settings))
+    cfg = load_config(config)
+    before = export_web_data(cfg, load_stations(cfg.stations_file), previous)
+    catalog_before = (previous / before['parameters_url']).read_bytes()
+    calls = provider(monkeypatch)
+    result = run(deployment)
+    current = (root / 'current').resolve(); active = read_json(current / 'data/manifest.json')
+    assert active['schema_version'] == '2.0.0'
+    assert (current / active['parameters_url']).read_bytes() == catalog_before
+    entry = read_json(current / active['parameters_url'])['stations'][0]['months'][0]
+    original_chunk = previous / Path(before['parameters_url']).parent / entry['path']
+    refreshed_chunk = current / Path(active['parameters_url']).parent / entry['path']
+    assert original_chunk.stat().st_ino == refreshed_chunk.stat().st_ino
+    assert result['parameter_snapshot'] == snapshot['snapshot_id']
+    assert job.verify_web(current)['parameter_locations'] == 2
+    assert run(deployment)['status'] == 'already_current' and len(calls) == 1
+    # A missing required cache cannot be mistaken for an already-current no-op.
+    settings['parameter_snapshot'] = str(tmp_path / 'missing-snapshot'); config.write_text(yaml.safe_dump(settings))
+    with pytest.raises(FileNotFoundError): run(deployment)
+    assert (root / 'current').resolve() == current

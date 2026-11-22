@@ -46,8 +46,8 @@ export function linkedSelection(target, source, links) {
   const daily = params => ['temperature', 'table', 'heatmap'].includes(params.get('view') || 'temperature') || params.get('view') === 'precipitation' && ['daily', 'monthly', 'yearly'].includes(params.get('rain_mode') || 'monthly');
   let reason = '';
   if (links.dates) {
-    if (daily(to) && daily(from)) { for (const key of ['start', 'end']) if (from.has(key)) to.set(key, from.get(key)); }
-    else reason = 'Date linking applies to daily-date timelines and period totals. Year overlays and seasonal windows remain independent.';
+    if (daily(to) && daily(from) || to.get('view') === 'parameters' && from.get('view') === 'parameters') { for (const key of ['start', 'end']) if (from.has(key)) to.set(key, from.get(key)); }
+    else reason = 'Date linking requires compatible calendars. UTC parameter samples, local daily timelines, year overlays and seasonal windows remain independent when mixed.';
   }
   return { value: { station: links.location ? source.station : target.station, query: to.toString() }, reason };
 }

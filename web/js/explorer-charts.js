@@ -9,7 +9,7 @@ const make = (tag, attrs = {}, text) => {
   return el;
 };
 
-export function lineChart(container, series, { title, unit = '', inspect, mark = 'line' }) {
+export function lineChart(container, series, { title, unit = '', inspect, mark = 'line', tickLabel = value => value, minimumPadding = 1, tickValue = shown }) {
   container.replaceChildren();
   const points = series.flatMap(s => s.points), valid = points.filter(p => finite(p.y));
   if (!valid.length) { container.textContent = 'No complete values to plot in this selection. See the table and coverage.'; return; }
@@ -17,14 +17,14 @@ export function lineChart(container, series, { title, unit = '', inspect, mark =
   const height = width < 520 ? 300 : 360, left = 65, right = 28, top = 25, bottom = 48;
   const xs = points.map(p => p.x), ys = valid.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), maxY = Math.max(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), padding = Math.max(1, (maxY - minY) * .12);
+  const minY = Math.min(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), maxY = Math.max(...ys, ...(['bar', 'area'].includes(mark) ? [0] : [])), padding = Math.max(minimumPadding, (maxY - minY) * .12);
   const x = value => left + (value - minX) / (maxX - minX || 1) * (width - left - right);
   const y = value => top + (maxY + padding - value) / (maxY - minY + 2 * padding) * (height - top - bottom);
   const svg = make('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': title });
   svg.append(make('title', {}, title), make('desc', {}, 'Use left/right arrow keys on the chart or select a position to read values. The table contains the selected data.'));
   for (let i = 0; i < 5; i++) {
-    const value = minY + (maxY - minY) * i / 4;
-    svg.append(make('line', { x1: left, x2: width - right, y1: y(value), y2: y(value), class: 'grid' }), make('text', { x: left - 10, y: y(value) + 4, 'text-anchor': 'end' }, shown(value)));
+    const value = minY - padding + (maxY - minY + padding * 2) * i / 4;
+    svg.append(make('line', { x1: left, x2: width - right, y1: y(value), y2: y(value), class: 'grid' }), make('text', { x: left - 10, y: y(value) + 4, 'text-anchor': 'end' }, tickValue(value)));
   }
   svg.append(make('text', { x: left, y: 15 }, unit));
   const plotted = series.filter(s => !s.reference);
@@ -70,7 +70,7 @@ export function lineChart(container, series, { title, unit = '', inspect, mark =
   });
   const positions = [...new Map(points.map(p => [p.x, p.label])).entries()].sort(([a], [b]) => a - b);
   for (const i of [...new Set([0, Math.floor((positions.length - 1) / 2), positions.length - 1])]) {
-    svg.append(make('text', { x: x(positions[i][0]), y: height - 14, 'text-anchor': i === 0 ? 'start' : i === positions.length - 1 ? 'end' : 'middle' }, positions[i][1]));
+    svg.append(make('text', { x: x(positions[i][0]), y: height - 14, 'text-anchor': i === 0 ? 'start' : i === positions.length - 1 ? 'end' : 'middle' }, tickLabel(positions[i][1])));
   }
   const cursor = make('line', { y1: top, y2: height - bottom, stroke: '#243e33', 'stroke-dasharray': '3 3', visibility: 'hidden' });
   svg.append(cursor); container.append(svg);
