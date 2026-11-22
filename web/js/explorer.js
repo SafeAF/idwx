@@ -1,5 +1,5 @@
 import { EVENT_NAMES, calendarDay, releaseURL, statusLabel, temperature, validateRelease, validateStationDocument } from './format.js';
-import { METRICS, aggregate, csv, finite, frostDistribution, monthlyAnomalies, normalizeSelection, periodStatistics, seasonalMetrics, selectedRows, selectionYears, shown, statistics, toUnit, validateChunk } from './analytics.js';
+import { METRICS, aggregate, calendarRecords, csv, finite, frostDistribution, monthlyAnomalies, normalizeSelection, parseStudies, periodStatistics, seasonalMetrics, selectedRows, selectionYears, shown, statistics, toUnit, validateChunk } from './analytics.js';
 import { renderHistory } from './charts.js';
 import { lineChart, temperatureSeries } from './explorer-charts.js';
 import { cumulativePrecipitation, growingAssessment, precipitationPeriods, precipitationStats, precipToUnit } from './growing.js';
@@ -13,6 +13,47 @@ const option = (value, label) => { const n = node('option', label); n.value = va
 const inspect = text => { $('ex-inspection').textContent = text; };
 const baseline = () => state.doc.temperature_climatology.baseline_period;
 const years = () => state.index.years.map(y => y.year);
+const studiesKey = 'idwx.weather-studies.v1';
+let studies = [], studiesAvailable = true;
+
+function saveStudies(charts) {
+  try {
+    const text = JSON.stringify({ version: 1, charts });
+    parseStudies(text);
+    localStorage.setItem(studiesKey, text);
+    studies = charts; renderStudies();
+    return true;
+  } catch {
+    $('studies-status').textContent = 'Could not save studies. Browser storage may be unavailable or full; at most 50 charts are supported. Your previous studies are preserved.';
+    return false;
+  }
+}
+function renderStudies() {
+  const list = $('studies-list'); list.replaceChildren();
+  $('studies-download').disabled = !studies.length;
+  if (!studies.length) { list.append(node('p', 'No saved charts yet. Display a chart, give it a name, then add it to a study.', 'muted')); return; }
+  const groups = new Map();
+  studies.forEach((chart, index) => {
+    if (!groups.has(chart.study)) {
+      const group = node('section', undefined, 'saved-study'); group.append(node('h3', chart.study)); groups.set(chart.study, group); list.append(group);
+    }
+    const card = node('article', undefined, 'saved-chart'), open = node('a', 'Open chart'), remove = node('button', 'Remove chart', 'button');
+    const url = new URL('explore.html', base); url.search = chart.query; url.searchParams.set('station', chart.station); open.href = url.href;
+    card.append(node('h4', chart.name), node('p', chart.notes), node('p', `${chart.station} · ${chart.data_kind} · saved ${chart.saved_at.slice(0, 10)} · release ${chart.release.slice(0, 12)}${state.manifest ? chart.release === state.manifest.release_id ? ' · matches loaded release' : ' · data changed; opening uses loaded release' : ''}`, 'small muted'));
+    open.onclick = event => {
+      event.preventDefault();
+      if (!state.stations?.stations.some(s => s.station.station_id === chart.station)) { $('studies-status').textContent = 'This saved station is unavailable in the loaded release.'; return; }
+      $('study-name').value = chart.study; $('study-chart-name').value = chart.name; $('study-notes').value = chart.notes;
+      $('studies-status').textContent = chart.release === state.manifest.release_id ? 'Opening the saved selection with the same data release.' : 'Data release changed. Recalculating the saved filters with the loaded release; saved results may differ.';
+      openSelection(chart.station, new URLSearchParams(chart.query));
+      $('explorer-filters').scrollIntoView?.({ block: 'start' });
+    };
+    remove.type = 'button'; remove.disabled = !studiesAvailable;
+    remove.setAttribute('aria-label', `Remove ${chart.name} from ${chart.study}`);
+    remove.onclick = () => { if (saveStudies(studies.filter((_, i) => i !== index))) $('studies-status').textContent = 'Chart removed from this browser.'; };
+    const actions = node('div', undefined, 'study-actions'); actions.append(open, remove); card.append(actions); groups.get(chart.study).append(card);
+  });
+}
 
 async function fetchJSON(url, signal, cache = true) {
   const key = url.href;
@@ -36,9 +77,9 @@ function visibility() {
   $('compare-control').hidden = view !== 'compare' && !rainCompare; $('threshold-control').hidden = !['frost', 'assessment'].includes(view);
   $('profile-year-control').hidden = view !== 'monthly'; $('month-control').hidden = view !== 'month-compare';
   $('statistic-control').hidden = !custom;
-  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'precipitation', 'assessment'].includes(view);
+  $('mark-control').hidden = !['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'calendar', 'precipitation', 'assessment'].includes(view);
   $('ex-start').disabled = $('ex-end').disabled = (['compare', 'monthly'].includes(view) || rainCompare);
-  $('ex-metric').disabled = ['frost', 'seasonal', 'precipitation', 'assessment'].includes(view);
+  $('ex-metric').disabled = ['calendar', 'frost', 'seasonal', 'precipitation', 'assessment'].includes(view);
   $('ex-unit').disabled = rain;
   $('ex-baseline').disabled = !['temperature', 'compare'].includes(view);
 }
@@ -75,7 +116,7 @@ async function openSelection(stationID, params, push = true) {
   controller?.abort(); controller = new AbortController();
   const signal = controller.signal, request = ++state.request;
   $('explorer-status').textContent = 'Loading selected historical data…'; $('explorer-results').hidden = true; $('explorer-retry').hidden = true;
-  $('ex-download').disabled = true;
+  $('ex-download').disabled = true; $('study-save').disabled = true;
   try {
     const entry = state.stations.stations.find(s => s.station.station_id === stationID) || state.stations.stations[0];
     const doc = validateStationDocument(await releaseDocument(entry.url, signal), entry.station.station_id);
@@ -103,7 +144,7 @@ async function openSelection(stationID, params, push = true) {
     for (const id of ['ex-start', 'ex-end']) { $(id).min = `${years()[0]}-01-01`; $(id).max = `${years().at(-1)}-12-31`; }
     syncControls(); if (push) writeURL();
     render();
-    $('explorer-results').hidden = false; $('ex-download').disabled = !state.table.length;
+    $('explorer-results').hidden = false; $('ex-download').disabled = !state.table.length; $('study-save').disabled = !studiesAvailable; renderStudies();
     $('explorer-status').textContent = `${doc.station.name}: ${(selection.view === 'compare' || selection.view === 'precipitation' && ['compare', 'cumulative'].includes(selection.rain_mode)) ? selection.compare.join(', ') : selection.start + ' through ' + selection.end} loaded.`;
   } catch (error) { showError(error, request); }
 }
@@ -165,6 +206,18 @@ function renderTemperature() {
       'Chart and table show complete-period means; partial periods remain unavailable. CSV uses canonical Celsius. Choose Daily data table for individual dates.');
   } else renderDaily();
 }
+function renderCalendarRecords() {
+  const s = state.selection;
+  const rows = calendarRecords(state.rows, Number(s.start.slice(0, 4)), Number(s.end.slice(0, 4)));
+  $('ex-title').textContent = 'Calendar-day records & averages';
+  $('ex-description').textContent = 'Each month/day combines the selected calendar years: lowest daily minimum, highest daily maximum, and arithmetic mean of valid daily means. These are records within this reanalysis selection, not official station records. All tied record dates are retained. February 29 includes leap years only.';
+  $('ex-legend').textContent = 'Record low: green · Mean daily temperature: rust · Record high: blue. Counts show available / expected years; partial samples can miss more extreme values. This mean is separate from the fixed baseline median.';
+  const fields = [['record_low_c', 'Record low'], ['mean_daily_c', 'Mean daily temperature'], ['record_high_c', 'Record high']];
+  lineChart($('ex-chart'), fields.map(([key, name], i) => ({ name, dash: ['', '7 3', '2 3'][i], points: rows.map(r => ({ x: calendarDay(`2000-${r.month_day}`), label: r.month_day, y: toUnit(r[key], s.unit), detail: `${shown(toUnit(r[key], s.unit))} °${s.unit.toUpperCase()} · ${r.valid_years}/${r.expected_years} years · ${r.status}${key === 'record_low_c' ? ' · ' + r.record_low_dates : key === 'record_high_c' ? ' · ' + r.record_high_dates : ''}` })) })), { title: $('ex-title').textContent, unit: `°${s.unit.toUpperCase()}`, inspect, mark: s.mark });
+  table([['month_day', 'Month/day'], ...fields.map(([key, label]) => [key, `${label} (°${s.unit.toUpperCase()})`, v => shown(toUnit(v, s.unit))]), ['record_low_dates', 'Record low dates'], ['record_high_dates', 'Record high dates'], ['valid_years', 'Valid years'], ['expected_years', 'Expected years'], ['status', 'Sample coverage']], rows,
+    'Available paired valid daily temperatures only; missing years are counted, never filled with zero. Partial records and averages remain labeled. CSV temperatures stay in Celsius, with all tied dates and selected-year coverage.');
+}
+
 function renderPeriodStatistics() {
   const s = state.selection, monthly = s.view === 'monthly', sameMonth = s.view === 'month-compare';
   const monthName = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, s.month - 1, 1)));
@@ -298,16 +351,16 @@ function render() {
   $('explorer-notice').textContent = state.manifest.data_kind === 'synthetic_demo' ? 'Synthetic demonstration — these are not actual weather measurements.' : 'Historical ERA5/Oikolab reanalysis. Archive freshness and export time are shown separately; this explorer does not fetch live weather.';
   $('ex-method').textContent = 'Temperature reference quantiles use linear interpolation and at least five paired valid years per calendar day. Frost quantiles use nearest rank and the published minimum confirmed-year requirement. Filtering the analysis period does not change the reference baseline.';
   renderStatistics();
-  if (s.view === 'precipitation') renderPrecipitation(); else if (s.view === 'assessment') renderAssessment(); else if (['annual', 'month-compare', 'monthly'].includes(s.view)) renderPeriodStatistics(); else if (s.view === 'frost') renderFrost(); else if (s.view === 'heatmap') renderHeatmap(); else if (s.view === 'seasonal') renderSeasonal(); else renderTemperature();
+  if (s.view === 'calendar') renderCalendarRecords(); else if (s.view === 'precipitation') renderPrecipitation(); else if (s.view === 'assessment') renderAssessment(); else if (['annual', 'month-compare', 'monthly'].includes(s.view)) renderPeriodStatistics(); else if (s.view === 'frost') renderFrost(); else if (s.view === 'heatmap') renderHeatmap(); else if (s.view === 'seasonal') renderSeasonal(); else renderTemperature();
 }
 
 $('explorer-filters').addEventListener('submit', event => { event.preventDefault(); if (state.stations) openSelection($('ex-station').value, paramsFromForm()); });
 $('ex-view').addEventListener('change', () => {
-  if (state.index && ['annual', 'month-compare'].includes($('ex-view').value) && !['annual', 'month-compare'].includes(state.selection.view)) {
+  if (state.index && ['annual', 'month-compare', 'calendar'].includes($('ex-view').value) && !['annual', 'month-compare', 'calendar'].includes(state.selection.view)) {
     $('ex-start').value = `${years()[0]}-01-01`;
     const last = state.doc.source_coverage.last_date;
     $('ex-end').value = `${last.endsWith('-12-31') ? years().at(-1) : years().length > 1 ? years().at(-2) : years()[0]}-12-31`;
-    $('ex-mark').value = 'bar';
+    $('ex-mark').value = $('ex-view').value === 'calendar' ? 'line' : 'bar';
   }
   if ($('ex-view').value === 'monthly') $('ex-mark').value = 'bar';
   if ($('ex-view').value === 'precipitation' && state.index?.precipitation_method?.last_complete_date) {
@@ -332,10 +385,10 @@ $('ex-download').onclick = () => {
   const period = baseline(), s = state.selection;
   const comparison = s.view === 'compare' || s.view === 'precipitation' && ['compare', 'cumulative'].includes(s.rain_mode);
   const metadata = { schema_version: state.manifest.schema_version, release_id: state.manifest.release_id, data_kind: state.manifest.data_kind, station_id: state.doc.station.station_id,
-    view: s.view, start: comparison ? '' : s.view === 'frost' ? s.start.slice(0, 4) + '-01-01' : s.start, end: comparison ? '' : s.view === 'frost' ? s.end.slice(0, 4) + '-12-31' : s.end, comparison_years: comparison ? s.compare.join(';') : '', display_unit: s.view === 'precipitation' ? s.rain_unit : s.unit, metric: s.view === 'precipitation' ? 'total_precipitation' : s.view === 'assessment' ? 'growing_year_requirements' : s.metric,
-    statistic: ['annual', 'month-compare', 'monthly'].includes(s.view) ? s.statistic : '', selected_month: s.view === 'month-compare' ? s.month : '', chart_style: ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'precipitation', 'assessment'].includes(s.view) ? s.mark : '',
+    view: s.view, start: comparison ? '' : s.view === 'frost' ? s.start.slice(0, 4) + '-01-01' : s.start, end: comparison ? '' : s.view === 'frost' ? s.end.slice(0, 4) + '-12-31' : s.end, comparison_years: comparison ? s.compare.join(';') : '', display_unit: s.view === 'precipitation' ? s.rain_unit : s.unit, metric: s.view === 'precipitation' ? 'total_precipitation' : s.view === 'assessment' ? 'growing_year_requirements' : s.view === 'calendar' ? 'calendar_day_temperatures' : s.metric,
+    statistic: ['annual', 'month-compare', 'monthly'].includes(s.view) ? s.statistic : '', selected_month: s.view === 'month-compare' ? s.month : '', chart_style: ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'calendar', 'precipitation', 'assessment'].includes(s.view) ? s.mark : '',
     baseline_start: period.start_year, baseline_end: period.end_year, threshold_c: ['frost', 'assessment'].includes(s.view) ? s.threshold : '',
-    selection_scope: comparison ? 'full_comparison_years' : ['frost', 'assessment'].includes(s.view) ? 'full_seasonal_windows' : s.view === 'month-compare' ? 'selected_month_across_years' : s.view === 'annual' ? 'full_calendar_years' : s.view === 'monthly' ? 'full_profile_year' : 'inclusive_local_dates' };
+    selection_scope: comparison ? 'full_comparison_years' : ['frost', 'assessment'].includes(s.view) ? 'full_seasonal_windows' : s.view === 'month-compare' ? 'selected_month_across_years' : s.view === 'calendar' ? 'calendar_days_across_selected_years' : s.view === 'annual' ? 'full_calendar_years' : s.view === 'monthly' ? 'full_profile_year' : 'inclusive_local_dates' };
   if (s.view === 'precipitation') Object.assign(metadata, { precipitation_view: s.rain_mode, precipitation_unit: s.rain_unit, reporting_utc_offset_hours: -7, precipitation_last_reviewed: state.index.precipitation_method.last_complete_date });
   if (s.view === 'assessment') Object.assign(metadata, { minimum_gdd: s.need_gdd, minimum_frost_free_days: s.need_days, precipitation_requirement_enabled: s.need_water, minimum_precip_mm: s.need_precip });
   if (['seasonal', 'assessment'].includes(s.view)) Object.assign(metadata, { gdd_base_c: state.summary.policy.gdd.base_c, gdd_cap_c: state.summary.policy.gdd.cap_c, gdd_start: state.summary.policy.gdd.start, gdd_end: state.summary.policy.gdd.end, hdd_base_c: state.summary.policy.hdd_base_c, cold_threshold_c: state.summary.policy.cold_threshold_c, winter_months: '12;1;2', degree_day_unit: 'C_days' });
@@ -363,4 +416,34 @@ async function load() {
 }
 $('explorer-retry').onclick = () => state.stations && state.pending ? openSelection(state.pending.stationID, state.pending.params, state.pending.push) : load();
 window.addEventListener('popstate', () => { if (state.stations) { const params = new URLSearchParams(location.search); openSelection(params.get('station'), params, false); } });
+try { studies = parseStudies(localStorage.getItem(studiesKey)); }
+catch { studiesAvailable = false; $('studies-import').disabled = true; $('studies-status').textContent = 'Saved studies could not be read. Existing storage is preserved; the explorer is still available.'; }
+renderStudies();
+$('study-form').onsubmit = event => {
+  event.preventDefault();
+  if (!studiesAvailable || !state.selection || $('explorer-results').hidden) return;
+  const study = $('study-name').value.trim(), name = $('study-chart-name').value.trim();
+  if (!study || !name) { $('studies-status').textContent = 'Enter a study name and chart name.'; return; }
+  // Save applied filters, even if there are unsubmitted edits in the form.
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(state.selection)) params.set(key, Array.isArray(value) ? value.join(',') : typeof value === 'boolean' ? value ? 'on' : 'off' : value);
+  if (saveStudies([...studies, { study, name, notes: $('study-notes').value, query: params.toString(), station: state.doc.station.station_id, release: state.manifest.release_id, saved_at: new Date().toISOString(), data_kind: state.manifest.data_kind }])) $('studies-status').textContent = 'Displayed chart selection saved in this browser.';
+};
+$('studies-download').onclick = () => {
+  const blob = new Blob([JSON.stringify({ version: 1, charts: studies }, null, 2) + '\n'], { type: 'application/json' });
+  const url = URL.createObjectURL(blob), a = node('a'); a.href = url; a.download = 'idwx-weather-studies.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+$('studies-import').onchange = async event => {
+  const file = event.target.files?.[0];
+  if (!file || !studiesAvailable) return;
+  try {
+    if (file.size > 1000000) throw new Error('Study file is too large.');
+    // Merge backups without replacing existing selections or duplicating identical entries.
+    const incoming = parseStudies(await file.text());
+    const merged = [...studies], known = new Set(studies.map(chart => JSON.stringify(chart)));
+    for (const chart of incoming) if (!known.has(JSON.stringify(chart))) { merged.push(chart); known.add(JSON.stringify(chart)); }
+    if (saveStudies(merged)) $('studies-status').textContent = `Backup imported; ${studies.length} saved charts now available.`;
+  } catch { $('studies-status').textContent = 'Could not import this study file. Choose an IDWX studies backup of at most 50 charts. Existing studies are preserved.'; }
+  event.target.value = '';
+};
 load();

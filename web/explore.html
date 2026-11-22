@@ -11,13 +11,13 @@
   <header class="site-header wrap"><a class="brand" href="./">IDWX <span class="brand-divider">/</span> Twin Falls Weather</a><a href="./#historical" class="header-link">Weather & frost almanac</a></header>
   <main id="explorer" class="wrap" tabindex="-1">
     <section class="explorer-intro"><p class="eyebrow">The historical record</p><h1>Explore the seasons.</h1><p>Follow daily temperatures, compare years, and investigate freeze dates. Every view includes its coverage and the values behind it.</p>
-      <nav class="explorer-shortcuts" aria-label="Visualization shortcuts"><a href="?view=compare">Compare years</a><a href="?view=annual">Yearly statistics</a><a href="?view=month-compare">A month across years</a><a href="?view=monthly">Monthly profile</a><a href="?view=heatmap">Anomaly heatmap</a><a href="?view=frost">Freeze dates</a><a href="?view=precipitation">Precipitation</a><a href="?view=assessment">Growing-year assessment</a></nav></section>
+      <nav class="explorer-shortcuts" aria-label="Visualization shortcuts"><a href="?view=compare">Compare years</a><a href="?view=annual">Yearly statistics</a><a href="?view=month-compare">A month across years</a><a href="?view=monthly">Monthly profile</a><a href="?view=heatmap">Anomaly heatmap</a><a href="?view=frost">Freeze dates</a><a href="?view=calendar">Calendar-day records</a><a href="#studies">Saved studies</a><a href="?view=precipitation">Precipitation</a><a href="?view=assessment">Growing-year assessment</a></nav></section>
     <div id="explorer-status" class="status" role="status" aria-live="polite">Loading the archive…</div>
     <button id="explorer-retry" class="button" hidden>Retry this selection</button>
     <p id="explorer-notice" class="notice" hidden></p>
     <form id="explorer-filters" class="explorer-filters panel" aria-label="Explore the archive">
       <label>Station<select id="ex-station" disabled></select></label>
-      <label>View<select id="ex-view"><option value="temperature">Temperature timeline</option><option value="compare">Compare years (daily overlay)</option><option value="annual">Yearly statistics</option><option value="month-compare">Same month across years</option><option value="monthly">Monthly profile of one year</option><option value="frost">Frost history</option><option value="heatmap">Monthly anomalies</option><option value="seasonal">Growing season & winter</option><option value="table">Daily data table</option><option value="precipitation">Total precipitation</option><option value="assessment">Growing-year assessment</option></select></label>
+      <label>View<select id="ex-view"><option value="temperature">Temperature timeline</option><option value="compare">Compare years (daily overlay)</option><option value="annual">Yearly statistics</option><option value="month-compare">Same month across years</option><option value="monthly">Monthly profile of one year</option><option value="calendar">Calendar-day records & averages</option><option value="frost">Frost history</option><option value="heatmap">Monthly anomalies</option><option value="seasonal">Growing season & winter</option><option value="table">Daily data table</option><option value="precipitation">Total precipitation</option><option value="assessment">Growing-year assessment</option></select></label>
       <label>From local date<input id="ex-start" type="date" required></label><label>Through local date<input id="ex-end" type="date" required></label>
       <label>Temperature series<select id="ex-metric"><option value="tmean_c">Daily mean</option><option value="tmin_c">Daily minimum</option><option value="tmax_c">Daily maximum</option></select></label>
       <label>Display units<select id="ex-unit"><option value="c">Celsius</option><option value="f">Fahrenheit</option></select></label>
@@ -48,6 +48,19 @@
       </section>
       <section class="methodology"><div><p class="eyebrow">Read the record carefully</p><h2>Context for every comparison.</h2></div><div class="method-copy"><p>ERA5/Oikolab is historical reanalysis at the Twin Falls coordinate, not a physical observing station. It is separate from KTWF observations and live forecast guidance on the homepage.</p><p>Daily gaps stay missing. Partial periods are labeled and excluded from full-period aggregates. Historical P10–P90 describes the archive; it is not a forecast interval. Freeze-date distributions include confirmed events only; no-event and incomplete seasons are counted separately.</p><p id="ex-method"></p></div></section>
     </div>
+    <section id="studies" class="panel" aria-labelledby="studies-title">
+      <p class="eyebrow">Keep exploring</p><h2 id="studies-title">Your weather studies</h2>
+      <p>Collect named chart selections and notes. Studies stay in this browser on this website; they do not sync between devices. Opening a chart recalculates its filters with the loaded release. Download studies to keep a backup of your selections.</p>
+      <form id="study-form" class="study-form">
+        <label>Study name<input id="study-name" maxlength="120" required value="My weather study"></label>
+        <label>Chart name<input id="study-chart-name" maxlength="120" required placeholder="For example: January cold extremes"></label>
+        <label class="study-notes">Notes<textarea id="study-notes" maxlength="500" rows="2"></textarea></label>
+        <button id="study-save" class="button" disabled>Save the displayed chart</button>
+      </form>
+      <p id="studies-status" role="status" aria-live="polite"></p>
+      <div class="study-actions"><button id="studies-download" class="button" disabled>Download studies</button><label class="button">Import studies<input id="studies-import" type="file" accept="application/json,.json"></label></div>
+      <div id="studies-list"></div>
+    </section>
     <noscript><p class="notice">JavaScript is required for the interactive explorer. The homepage provides a link to the published annual frost CSV.</p></noscript>
   </main><footer class="wrap">IDWX / Twin Falls historical data explorer</footer>
 </body>

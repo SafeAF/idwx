@@ -68,3 +68,35 @@ test('graph-builder period statistics compute known means/extremes and reject in
   assert.equal(profile.start, '2024-01-01'); assert.equal(profile.end, '2024-12-31');
   assert.equal(profile.month, 1); assert.equal(profile.mark, 'bar'); assert.equal(profile.statistic, 'mean');
 });
+
+test('calendar records preserve tied dates, arithmetic means, leap samples and missing coverage', async () => {
+  const { calendarRecords } = await import('../js/analytics.js');
+  const data = [
+    { ...row('2020-01-01', 2), tmin_c: -5, tmax_c: 10 },
+    { ...row('2021-01-01', 4), tmin_c: -5, tmax_c: 12 },
+    { ...row('2022-01-01', 9), status: 'invalid_temperature' },
+    row('2020-02-29', 0), row('2024-02-29', null),
+  ];
+  const records = calendarRecords(data, 2020, 2024), january = records[0];
+  assert.equal(records.length, 366);
+  assert.equal(january.record_low_c, -5); assert.equal(january.record_high_c, 12);
+  assert.equal(january.mean_daily_c, 3); assert.equal(january.valid_years, 2);
+  assert.equal(january.expected_years, 5); assert.equal(january.status, 'partial');
+  assert.equal(january.record_low_dates, '2020-01-01;2021-01-01');
+  assert.equal(january.record_high_dates, '2021-01-01');
+  const leap = records.find(r => r.month_day === '02-29');
+  assert.equal(leap.expected_years, 2); assert.equal(leap.valid_years, 1); assert.equal(leap.mean_daily_c, 0);
+  assert.equal(records[1].status, 'no_data'); assert.equal(records[1].record_low_c, null);
+  assert.equal(calendarRecords([], 2021, 2023).length, 365);
+  const selection = normalizeSelection(new URLSearchParams('view=calendar&start=2020-05-01&end=2024-06-01'), [2020, 2021, 2022, 2023, 2024], [0]);
+  assert.equal(selection.start, '2020-01-01'); assert.equal(selection.end, '2024-12-31');
+});
+
+test('study backups require a bounded, versioned selection document', async () => {
+  const { parseStudies } = await import('../js/analytics.js');
+  assert.deepEqual(parseStudies(null), []);
+  assert.throws(() => parseStudies('{}'), /study format/);
+  assert.throws(() => parseStudies('{bad'));
+  assert.throws(() => parseStudies(JSON.stringify({ version: 1, charts: Array(51).fill({}) })), /study format/);
+  assert.throws(() => parseStudies(JSON.stringify({ version: 1, charts: [{ name: 'Missing filters' }] })), /saved chart/);
+});

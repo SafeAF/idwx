@@ -38,12 +38,12 @@ export function normalizeSelection(params, years, thresholds, sourceLastDate = n
   let end = clamp(params.get('end'), `${defaultYear}-12-31`);
   if (end < start) end = start;
   const compare = [...new Set((params.get('compare') || years.filter(y => y <= defaultYear).slice(-3).join(',')).split(',').map(Number).filter(y => years.includes(y)))].slice(0, 3);
-  const views = ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'frost', 'heatmap', 'seasonal', 'table', 'precipitation', 'assessment'];
+  const views = ['temperature', 'compare', 'annual', 'month-compare', 'monthly', 'calendar', 'frost', 'heatmap', 'seasonal', 'table', 'precipitation', 'assessment'];
   const view = views.includes(params.get('view')) ? params.get('view') : 'temperature';
-  if (['annual', 'month-compare'].includes(view) && !params.has('start')) start = first;
+  if (['annual', 'month-compare', 'calendar'].includes(view) && !params.has('start')) start = first;
   const profileYear = years.includes(Number(params.get('profile_year'))) ? Number(params.get('profile_year')) : Number(start.slice(0, 4));
   if (view === 'monthly') { start = `${profileYear}-01-01`; end = `${profileYear}-12-31`; }
-  if (['annual', 'month-compare', 'frost', 'assessment'].includes(view)) { start = start.slice(0, 4) + '-01-01'; end = end.slice(0, 4) + '-12-31'; }
+  if (['annual', 'month-compare', 'calendar', 'frost', 'assessment'].includes(view)) { start = start.slice(0, 4) + '-01-01'; end = end.slice(0, 4) + '-12-31'; }
   return {
     view, start, end, profile_year: profileYear,
     rain_mode: ['daily', 'monthly', 'yearly', 'compare', 'cumulative'].includes(params.get('rain_mode')) ? params.get('rain_mode') : 'monthly',
@@ -77,6 +77,42 @@ export function statistics(rows) {
     stats[key] = { valid: values.length, mean: mean(values), min: values.length ? Math.min(...values) : null, max: values.length ? Math.max(...values) : null };
   }
   return stats;
+}
+
+export function calendarRecords(rows, startYear, endYear) {
+  const byDate = new Map(rows.map(row => [row.date, row]));
+  const groups = new Map();
+  for (let year = startYear; year <= endYear; year++) {
+    for (let time = Date.UTC(year, 0, 1); time < Date.UTC(year + 1, 0, 1); time += 86400000) {
+      const date = new Date(time).toISOString().slice(0, 10), day = date.slice(5);
+      if (!groups.has(day)) groups.set(day, { expected: 0, days: [] });
+      const group = groups.get(day), row = byDate.get(date);
+      group.expected++;
+      if (row?.status === 'valid' && Object.keys(METRICS).every(key => finite(row[key]))) group.days.push(row);
+    }
+  }
+  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([month_day, { expected, days }]) => {
+    const low = days.length ? Math.min(...days.map(row => row.tmin_c)) : null;
+    const high = days.length ? Math.max(...days.map(row => row.tmax_c)) : null;
+    return { month_day, record_low_c: low, record_high_c: high, mean_daily_c: mean(days.map(row => row.tmean_c)),
+      record_low_dates: days.filter(row => row.tmin_c === low).map(row => row.date).sort().join(';'),
+      record_high_dates: days.filter(row => row.tmax_c === high).map(row => row.date).sort().join(';'),
+      valid_years: days.length, expected_years: expected, status: !days.length ? 'no_data' : days.length === expected ? 'complete' : 'partial' };
+  });
+}
+
+// Stored studies contain selections, never executable markup or remote URLs.
+export function parseStudies(text) {
+  if (text === null) return [];
+  const doc = JSON.parse(text);
+  if (doc?.version !== 1 || !Array.isArray(doc.charts) || doc.charts.length > 50) throw new Error('Invalid study format.');
+  for (const chart of doc.charts) {
+    if (!chart || !['study', 'name', 'notes', 'query', 'station', 'release', 'saved_at', 'data_kind'].every(key => typeof chart[key] === 'string') ||
+        !chart.study.trim() || chart.study.length > 120 || !chart.name.trim() || chart.name.length > 120 || chart.notes.length > 500 || chart.query.length > 4000 ||
+        !/^[a-z][a-z0-9_]*$/.test(chart.station) || !/^[a-f0-9]{64}$/.test(chart.release) ||
+        !['historical_reanalysis', 'synthetic_demo'].includes(chart.data_kind) || !Number.isFinite(Date.parse(chart.saved_at))) throw new Error('Invalid saved chart.');
+  }
+  return doc.charts;
 }
 
 export function aggregate(rows, key, frequency = 'month') {

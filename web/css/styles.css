@@ -896,3 +896,13 @@ thead th {
 .comparison-year-selectors { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; }
 @media (max-width: 760px) { .visualization-hub { padding: 1.3rem; } .visualization-links { grid-template-columns: 1fr; } .visualization-hub .section-heading { align-items: start; flex-direction: column; } }
 @media (max-width: 520px) { .comparison-year-selectors { grid-template-columns: 1fr; } }
+.study-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; margin:1.5rem 0; }
+.study-form label { display:grid; gap:.5rem; font-weight:600; }
+.study-form input, .study-form textarea { width:100%; min-width:0; padding:.7rem; border:1px solid var(--line); border-radius:.35rem; font:inherit; background:var(--paper); color:var(--ink); }
+.study-notes { grid-column:1/-1; }
+.study-actions { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; margin:.75rem 0; }
+.study-actions input[type=file] { display:block; max-width:100%; margin-top:.5rem; font:inherit; }
+.saved-study { margin-top:2rem; }
+.saved-chart { padding:1rem 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+.saved-chart h4 { margin:.25rem 0; font-size:1.1rem; }
+@media(max-width:600px) { .study-form { grid-template-columns:1fr; } }

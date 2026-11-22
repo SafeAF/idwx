@@ -57,6 +57,15 @@ production needs only Nginx. See the [delivery report](docs/21_DELIVERY_STATUS.m
 and [deployment instructions](docs/15_DASHBOARD_DEPLOYMENT.md) for verification,
 staging, atomic activation, rollback, and remaining launch requirements.
 
+## IdaWeather analysis comparison
+
+The explorer includes calendar-day temperature records and averages, plus
+browser-local weather studies with named chart selections, notes, and backup /
+import. Annual/monthly comparisons, chart styles, precipitation, frost and
+growing-season views were already present. See the
+[feature comparison and prioritized recommendations](docs/26_IDAWEATHER_COMPARISON.md)
+for the remaining hourly, variable, location and study-board work.
+
 ## Twin Falls data
 
 [`data/idwx.sqlite3`](data/idwx.sqlite3) is intentionally committed. It contains

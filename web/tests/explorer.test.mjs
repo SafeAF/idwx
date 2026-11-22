@@ -36,12 +36,13 @@ const settle = async predicate => {
   const limit = Date.now() + 10000;
   while (!predicate()) { if (Date.now() > limit) throw new Error('Explorer did not settle'); await new Promise(resolve => setImmediate(resolve)); }
 };
-async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route } = {}) {
+async function explorer(t, { query = '?start=2020-01-01&end=2020-12-31', route, savedStudies } = {}) {
   const errors = [], requests = [], downloads = [], blobs = new Map(), console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error));
   const dom = new JSDOM(html, { url: 'https://idwx.test/almanac/explore.html' + query, runScripts: 'outside-only', virtualConsole: console });
   t.after(() => { dom.window.close(); assert.deepEqual(errors, []); });
   const { window } = dom;
+  if (savedStudies !== undefined) window.localStorage.setItem('idwx.weather-studies.v1', savedStudies);
   window.Blob = Blob;
   window.URL.createObjectURL = blob => { const key = 'blob:test-' + blobs.size; blobs.set(key, blob); return key; };
   window.URL.revokeObjectURL = () => {};
@@ -271,4 +272,74 @@ test('malformed precipitation cannot be rendered as complete even when temperatu
     }
   } });
   assert.equal($('explorer-results').hidden, true); assert.match($('explorer-status').textContent, /precipitation coverage/);
+});
+
+test('calendar-day records have matching canonical CSV, leap counts and keyboard inspection', async t => {
+  const { $, window, blobs } = await explorer(t, { query: '?view=calendar&start=2020-05-01&end=2021-06-01&unit=f' });
+  assert.match($('ex-title').textContent, /Calendar-day/);
+  assert.equal($('ex-start').value, '2020-01-01'); assert.equal($('ex-end').value, '2021-12-31');
+  assert.equal($('ex-metric').disabled, true); assert.equal($('ex-baseline').disabled, true);
+  assert.equal($('ex-chart').querySelectorAll('path[data-mark=line]').length, 3);
+  $('ex-chart').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+  assert.match($('ex-inspection').textContent, /01-01.*2\/2 years/);
+  $('ex-download').click(); const exported = await [...blobs.values()][0].text();
+  assert.match(exported, /calendar_days_across_selected_years/);
+  assert.match(exported, /record_low_dates/);
+  assert.equal(exported.trim().split('\r\n').length, 367);
+  const lines = exported.trim().split('\r\n'), keys = lines[0].slice(1, -1).split('","');
+  const leap = lines.find(line => line.includes('"02-29"')).slice(1, -1).split('","');
+  assert.equal(leap[keys.indexOf('expected_years')], '1'); assert.equal(leap[keys.indexOf('valid_years')], '1');
+});
+
+test('studies group named charts, save applied filters, reopen, export, import and remove', async t => {
+  const { $, window, apply, blobs } = await explorer(t);
+  const save = () => $('study-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  $('study-name').value = 'Cold seasons'; $('study-chart-name').value = '<img src=x onerror=alert(1)>'; $('study-notes').value = '<script>untrusted note</script>';
+  // Unapplied edits must not change the saved chart selection.
+  $('ex-start').value = '2021-01-01'; save();
+  assert.equal($('studies-list').querySelector('img'), null); assert.equal($('studies-list').querySelector('script'), null);
+  let stored = JSON.parse(window.localStorage.getItem('idwx.weather-studies.v1'));
+  assert.equal(new URLSearchParams(stored.charts[0].query).get('start'), '2020-01-01');
+  assert.equal(stored.charts[0].release, manifest.release_id);
+  await apply({ view: 'monthly', profile_year: '2021' });
+  $('study-chart-name').value = 'Monthly profile'; save();
+  assert.equal($('studies-list').querySelectorAll('.saved-study').length, 1);
+  assert.equal($('studies-list').querySelectorAll('.saved-chart').length, 2);
+  $('studies-list').querySelector('a').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await settle(() => $('ex-view').value === 'temperature' && !$('explorer-results').hidden);
+  assert.equal($('ex-start').value, '2020-01-01');
+  $('studies-download').click(); const backup = await [...blobs.values()][0].text();
+  assert.equal(JSON.parse(backup).charts.length, 2);
+  $('studies-list').querySelector('button').click();
+  assert.equal($('studies-list').querySelectorAll('.saved-chart').length, 1);
+  Object.defineProperty($('studies-import'), 'files', { configurable: true, value: [{ size: backup.length, text: async () => backup }] });
+  $('studies-import').dispatchEvent(new window.Event('change'));
+  await settle(() => $('studies-list').querySelectorAll('.saved-chart').length === 2);
+  assert.equal(JSON.parse(window.localStorage.getItem('idwx.weather-studies.v1')).charts.length, 2);
+  const previous = window.localStorage.getItem('idwx.weather-studies.v1');
+  Object.defineProperty($('studies-import'), 'files', { configurable: true, value: [{ size: 2, text: async () => '{}' }] });
+  $('studies-import').dispatchEvent(new window.Event('change'));
+  await settle(() => $('studies-status').textContent.includes('Could not import'));
+  assert.equal(window.localStorage.getItem('idwx.weather-studies.v1'), previous);
+});
+
+test('corrupt study storage is preserved and does not prevent historical exploration', async t => {
+  const { $, window } = await explorer(t, { savedStudies: '{unreadable' });
+  assert.equal($('explorer-results').hidden, false);
+  assert.equal($('study-save').disabled, true); assert.equal($('studies-import').disabled, true);
+  assert.match($('studies-status').textContent, /Existing storage is preserved/);
+  assert.equal(window.localStorage.getItem('idwx.weather-studies.v1'), '{unreadable');
+});
+
+test('saved charts identify data changes and reject stations missing from the loaded release', async t => {
+  const chart = { study: 'Old study', name: 'Old chart', notes: '', query: 'view=calendar&start=2020-01-01&end=2021-12-31', station: 'demo', release: 'a'.repeat(64), saved_at: '2026-11-21T00:00:00Z', data_kind: 'historical_reanalysis' };
+  const { $, window } = await explorer(t, { savedStudies: JSON.stringify({ version: 1, charts: [chart, { ...chart, station: 'removed' }] }) });
+  assert.match($('studies-list').textContent, /data changed/);
+  const links = $('studies-list').querySelectorAll('a');
+  links[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await settle(() => $('ex-view').value === 'calendar' && !$('explorer-results').hidden);
+  assert.match($('studies-status').textContent, /Data release changed/);
+  links[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.match($('studies-status').textContent, /station is unavailable/);
+  assert.equal($('ex-view').value, 'calendar');
 });
