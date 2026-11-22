@@ -13,6 +13,7 @@ import re
 import shutil
 import tempfile
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -27,6 +28,11 @@ METHOD = 'source_samples_unchanged_v1'
 SID = r'[a-z0-9]+(?:_[a-z0-9]+)*'
 CHUNK_PATH = rf'hourly/{SID}/\d{{4}}-\d{{2}}\.json'
 SHA = re.compile(r'[a-f0-9]{64}')
+# Reuse semantic proofs only within this process, after hashing the exact bytes
+# again and checking the same expected chunk identity. Encoded summaries cannot
+# be mutated by callers; the bound covers the full archive without retaining rows.
+_MONTH_PROOFS: OrderedDict[tuple, bytes] = OrderedDict()
+_MAX_MONTH_PROOFS = 16384
 
 
 def encoded(value) -> bytes:
@@ -40,6 +46,10 @@ def supplied_metrics() -> list[dict]:
 
 
 def read_json(path: Path) -> dict:
+    return _decode_json(path.read_bytes())
+
+
+def _decode_json(content: bytes) -> dict:
     def pairs(items):
         result = {}
         for key, value in items:
@@ -49,7 +59,7 @@ def read_json(path: Path) -> dict:
         return result
     def invalid(value):
         raise ValueError('Nonfinite parameter JSON value')
-    value = json.loads(path.read_text(), object_pairs_hook=pairs, parse_constant=invalid)
+    value = json.loads(content.decode('utf-8'), object_pairs_hook=pairs, parse_constant=invalid)
     _require(isinstance(value, dict), 'Invalid parameter JSON document')
     return value
 
@@ -142,8 +152,17 @@ def validate_snapshot(root: Path, *, allow_demo=False) -> dict:
             paths.add(path)
             file = root / path
             _require(file.is_file() and not file.is_symlink() and file.resolve().is_relative_to(root), 'Unsafe/missing parameter chunk')
-            _require(isinstance(entry['sha256'], str) and SHA.fullmatch(entry['sha256']) and digest(file) == entry['sha256'], 'Parameter chunk checksum mismatch')
-            _merge_stats(total, validate_month(read_json(file), entry, station, kind))
+            content = file.read_bytes()
+            _require(isinstance(entry['sha256'], str) and SHA.fullmatch(entry['sha256'])
+                     and hashlib.sha256(content).hexdigest() == entry['sha256'], 'Parameter chunk checksum mismatch')
+            proof_key = (entry['sha256'], sid, entry['month'], entry['start_utc'], entry['count'], kind)
+            proof = _MONTH_PROOFS.pop(proof_key, None)
+            if proof is None:
+                proof = encoded(validate_month(_decode_json(content), entry, station, kind))
+            _MONTH_PROOFS[proof_key] = proof
+            if len(_MONTH_PROOFS) > _MAX_MONTH_PROOFS:
+                _MONTH_PROOFS.popitem(last=False)
+            _merge_stats(total, json.loads(proof))
             count += entry['count']; next_stamp += timedelta(hours=entry['count'])
         _require(type(station['count']) is int and station['count'] == count
                  and utc(station['last_utc']) + timedelta(hours=1) == next_stamp, 'Parameter source coverage mismatch')

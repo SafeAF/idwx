@@ -112,6 +112,12 @@ are reused through verified hard links within retained publications, rather
 than duplicating the entire archive on every daily refresh. Existing publication
 locking, health checks and rollback remain in effect.
 
+Within a batch process, repeated identical monthly chunks reuse a bounded
+semantic-validation result. Every read still checks the SHA-256 of the exact
+bytes. Reuse requires the same hash, location, month, UTC start, count and data
+kind; changed bytes or expected metadata receive full validation. Cached
+summaries retain no sample rows and do not persist between runs.
+
 ## Real-data evidence
 
 | Property | Verified local result |

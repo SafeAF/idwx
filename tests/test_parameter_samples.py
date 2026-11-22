@@ -1,6 +1,7 @@
 """Unchanged source values and units must survive import, publication and refresh."""
 import csv
 import hashlib
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -93,6 +94,43 @@ def test_boolean_values_and_unsafe_paths_are_rejected(samples):
     root = Path(build()['path'])
     mutate_chunk(root, lambda chunk: chunk['values'][0].__setitem__(0, True))
     with pytest.raises(ValueError, match='sample value'): validate_snapshot(root)
+
+
+def test_repeated_immutable_chunks_reuse_proof_but_always_check_bytes(samples, tmp_path, monkeypatch):
+    import idwx.parameter_samples as parameters
+    root = Path(samples[-1]()['path'])
+    parameters._MONTH_PROOFS.clear()
+    original = parameters.validate_month
+    calls = []
+    def checked(*args):
+        calls.append(args[1]['month'])
+        return original(*args)
+    monkeypatch.setattr(parameters, 'validate_month', checked)
+    catalog = validate_snapshot(root)
+    assert len(calls) == 2
+    copied = tmp_path / 'copied'
+    shutil.copytree(root, copied)
+    assert validate_snapshot(copied) == catalog
+    assert len(calls) == 2  # Same bytes and expected identity, across roots.
+    chunk = copied / catalog['stations'][0]['months'][0]['path']
+    chunk.write_bytes(chunk.read_bytes() + b' ')
+    with pytest.raises(ValueError, match='checksum'): validate_snapshot(copied)
+    assert len(calls) == 2
+
+
+def test_cached_proof_does_not_admit_changed_expected_identity(samples):
+    root = Path(samples[-1]()['path'])
+    catalog = validate_snapshot(root)  # Warm the proof cache.
+    catalog['stations'][0]['months'][0]['count'] = 2
+    catalog['snapshot_id'] = hashlib.sha256(encoded({k: v for k, v in catalog.items() if k != 'snapshot_id'})).hexdigest()
+    (root / 'catalog.json').write_bytes(encoded(catalog))
+    with pytest.raises(ValueError, match='sample count'): validate_snapshot(root)
+
+
+def test_parameter_json_retains_utf8_only_decoding(tmp_path):
+    path = tmp_path / 'parameter.json'
+    path.write_bytes('{"value":1}'.encode('utf-16'))
+    with pytest.raises(UnicodeError): read_json(path)
 
 
 def test_publication_and_zip_bind_the_snapshot_and_preserve_legacy_data(samples, tmp_path):
